@@ -229,7 +229,7 @@
     font-size: 0.88rem;
     vertical-align: middle;
   }
-  .ticker-cell { display: flex; align-items: center; gap: 12px; }
+  .ticker-cell { display: flex; align-items: center; gap: 12px; cursor: pointer; }
   .ticker-icon {
     width: 36px; height: 36px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
@@ -248,7 +248,8 @@
     font-family: var(--font-mono); font-size: 0.65rem; font-weight: 700;
     color: #fff;
   }
-  .ticker-name { font-weight: 700; font-size: 0.9rem; letter-spacing: 0.5px; }
+  .ticker-name { font-weight: 700; font-size: 0.9rem; letter-spacing: 0.5px; transition: color 0.15s; }
+  .ticker-cell:hover .ticker-name { color: var(--accent2); }
   .ticker-weight { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
   .mono { font-family: var(--font-mono); }
   .green { color: var(--green); }
@@ -412,6 +413,66 @@
   }
   .speed-btn:hover, .speed-btn.active { background: var(--accent); color: #0a0c10; border-color: var(--accent); }
 
+  /* RANGE BAR */
+  .range-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 4px 4px;
+    flex-wrap: wrap;
+  }
+  .range-inputs {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .range-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .range-date {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 10px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    color-scheme: dark;
+  }
+  .range-date:focus { border-color: var(--accent2); }
+  .range-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 12px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .range-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .zoom-out-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 14px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .zoom-out-btn:hover { border-color: var(--accent); color: var(--accent); }
+
   /* Responsive */
   @media (max-width: 680px) {
     .summary-grid { grid-template-columns: 1fr 1fr; }
@@ -516,6 +577,144 @@
     80%{transform:translateX(6px)}
   }
   .shake { animation: shake 0.4s ease; }
+
+  /* ===================== STOCK DETAIL VIEW (Webull-style) ===================== */
+  .detail-overlay {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 500;
+    display: none;
+    overflow-y: auto;
+  }
+  .detail-overlay.open { display: block; }
+  .detail-topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: #0d1117;
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .back-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); cursor: pointer; font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.15s;
+  }
+  .back-btn:hover { background: var(--surface2); border-color: var(--muted2); }
+  .detail-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .detail-ticker { font-family: var(--font-mono); font-weight: 700; font-size: 1.05rem; }
+  .detail-name { color: var(--muted); font-size: 0.78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-price-block { display: flex; align-items: baseline; gap: 10px; margin-left: auto; flex-shrink: 0; }
+  .detail-price { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700; }
+  .detail-chg { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; }
+
+  .detail-body { max-width: 1200px; margin: 0 auto; padding: 18px 20px 60px; display: grid; grid-template-columns: 1fr 280px; gap: 18px; }
+  @media (max-width: 900px) { .detail-body { grid-template-columns: 1fr; } }
+
+  .detail-main { min-width: 0; }
+  .chart-toolbar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px 12px 0 0; padding: 10px 14px; border-bottom: none;
+  }
+  .tf-group { display: flex; gap: 4px; background: var(--surface2); border-radius: 8px; padding: 3px; }
+  .tf-btn {
+    background: transparent; border: none; color: var(--muted);
+    font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+    padding: 5px 10px; border-radius: 6px; cursor: pointer; transition: all 0.15s;
+  }
+  .tf-btn:hover { color: var(--text); }
+  .tf-btn.active { background: var(--accent); color: #0a0c10; }
+  .tool-sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+  .tool-btn {
+    width: 32px; height: 32px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--muted); cursor: pointer; font-size: 0.9rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; position: relative;
+  }
+  .tool-btn:hover { color: var(--text); border-color: var(--muted2); }
+  .tool-btn.active { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+  .tool-btn .tool-label {
+    position: absolute; top: 38px; left: 50%; transform: translateX(-50%);
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 3px 8px; border-radius: 6px; font-size: 0.65rem; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 20;
+  }
+  .tool-btn:hover .tool-label { opacity: 1; }
+  .chart-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 0 0 12px 12px; padding: 14px; position: relative;
+  }
+  #candleCanvas { width: 100%; display: block; cursor: crosshair; touch-action: none; }
+  .chart-hint {
+    position: absolute; top: 18px; left: 24px;
+    font-family: var(--font-mono); font-size: 0.68rem; color: var(--muted);
+    background: rgba(17,20,25,0.85); padding: 4px 10px; border-radius: 6px;
+    border: 1px solid var(--border); pointer-events: none;
+  }
+  .crosshair-readout {
+    position: absolute; top: 18px; right: 24px;
+    font-family: var(--font-mono); font-size: 0.7rem; color: var(--text);
+    background: rgba(17,20,25,0.92); padding: 6px 10px; border-radius: 6px;
+    border: 1px solid var(--border); display: none; line-height: 1.5;
+  }
+
+  .key-stats {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
+    margin-top: 14px;
+  }
+  @media (max-width: 560px) { .key-stats { grid-template-columns: repeat(2,1fr); } }
+  .kstat {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .kstat-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: var(--font-mono); margin-bottom: 4px; }
+  .kstat-val { font-family: var(--font-mono); font-weight: 700; font-size: 0.92rem; }
+
+  .detail-side { display: flex; flex-direction: column; gap: 14px; }
+  .side-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .side-title { font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+  .position-row { display: flex; justify-content: space-between; font-size: 0.82rem; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .position-row:last-child { border-bottom: none; }
+  .position-row .lbl { color: var(--muted); }
+  .position-row .val { font-family: var(--font-mono); font-weight: 700; }
+
+  .alert-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; max-height: 180px; overflow-y: auto; }
+  .alert-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 0.78rem;
+  }
+  .alert-item .alert-cond { font-family: var(--font-mono); font-weight: 700; }
+  .alert-item .alert-cond.above { color: var(--green); }
+  .alert-item .alert-cond.below { color: var(--red); }
+  .alert-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.85rem; padding: 2px 6px; }
+  .alert-del:hover { color: var(--red); }
+  .alert-empty { color: var(--muted); font-size: 0.78rem; text-align: center; padding: 14px 0; }
+  .alert-form { display: flex; gap: 6px; }
+  .alert-form select { width: 86px; flex-shrink: 0; }
+  .alert-form input { flex: 1; min-width: 0; }
+  .alert-form button { flex-shrink: 0; padding: 9px 12px; }
+
+  .drawn-list { display: flex; flex-direction: column; gap: 6px; }
+  .drawn-item {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.76rem; padding: 6px 8px; border-radius: 6px; background: var(--surface2);
+  }
+  .drawn-item .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 6px; vertical-align: middle; }
+  .drawn-empty { color: var(--muted); font-size: 0.76rem; }
+
+  .toast-alert {
+    position: fixed; top: 20px; right: 20px; z-index: 9998;
+    background: var(--surface); border: 1px solid var(--accent);
+    border-radius: 12px; padding: 14px 18px; max-width: 320px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    animation: modalIn 0.25s ease;
+  }
+  .toast-alert .ta-title { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 0.85rem; margin-bottom: 4px; }
+  .toast-alert .ta-body { font-size: 0.82rem; color: var(--text); }
 </style>
 </head>
 <body>
@@ -696,6 +895,105 @@
   </div>
 </div>
 
+<!-- ===================== STOCK DETAIL OVERLAY (Webull-style) ===================== -->
+<div class="detail-overlay" id="detailOverlay">
+  <div class="detail-topbar">
+    <button class="back-btn" onclick="closeDetail()" title="ย้อนกลับ">←</button>
+    <div class="detail-id">
+      <span class="detail-ticker" id="d_ticker">—</span>
+      <span class="detail-name" id="d_sector">—</span>
+      <span id="d_datasource" style="font-family:var(--font-mono);font-size:0.62rem;padding:2px 7px;border-radius:5px;white-space:nowrap"></span>
+    </div>
+    <div class="detail-price-block">
+      <span class="detail-price" id="d_price">$0.00</span>
+      <span class="detail-chg" id="d_chg">+0.00 (+0.00%)</span>
+    </div>
+  </div>
+
+  <div class="detail-body">
+    <div class="detail-main">
+      <div class="chart-toolbar">
+        <div class="tf-group" id="tfGroup">
+          <button class="tf-btn" data-tf="1D">1D</button>
+          <button class="tf-btn active" data-tf="1M">1M</button>
+          <button class="tf-btn" data-tf="3M">3M</button>
+          <button class="tf-btn" data-tf="6M">6M</button>
+          <button class="tf-btn" data-tf="1Y">1Y</button>
+          <button class="tf-btn" data-tf="5Y">5Y</button>
+        </div>
+        <div class="tool-sep"></div>
+        <button class="tool-btn" id="toolCursor" title="เลื่อนดู (Cursor)" onclick="setDrawTool('cursor')">
+          ↖<span class="tool-label">เลื่อนดู</span>
+        </button>
+        <button class="tool-btn" id="toolHLine" title="เส้นแนวนอน" onclick="setDrawTool('hline')">
+          ─<span class="tool-label">เส้นแนวนอน (Support/Resistance)</span>
+        </button>
+        <button class="tool-btn" id="toolTrend" title="เส้นเทรนด์" onclick="setDrawTool('trend')">
+          ╱<span class="tool-label">เส้นเทรนด์</span>
+        </button>
+        <button class="tool-btn" id="toolClearLast" title="ลบเส้นล่าสุด" onclick="clearLastDrawing()">
+          ⌫<span class="tool-label">ลบเส้นล่าสุด</span>
+        </button>
+        <button class="tool-btn" id="toolClearAll" title="ลบเส้นทั้งหมด" onclick="clearAllDrawings()">
+          🗑<span class="tool-label">ลบทั้งหมด</span>
+        </button>
+        <div class="tool-sep"></div>
+        <button class="tool-btn" id="toolAlert" title="ตั้งเตือนที่ราคานี้" onclick="quickAlertFromCrosshair()">
+          🔔<span class="tool-label">ตั้งเตือนจากจุดนี้</span>
+        </button>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-hint" id="chartHint">เลื่อนดูกราฟ</div>
+        <div class="crosshair-readout" id="crosshairReadout"></div>
+        <canvas id="candleCanvas" height="420"></canvas>
+      </div>
+
+      <!-- Range Controls Below Chart -->
+      <div class="range-bar" id="rangeBar">
+        <div class="range-inputs">
+          <label class="range-label">จาก</label>
+          <input type="date" class="range-date" id="rangeFrom">
+          <label class="range-label">ถึง</label>
+          <input type="date" class="range-date" id="rangeTo">
+          <button class="range-btn" onclick="applyDateRange()">📅 ใช้งาน</button>
+          <button class="range-btn" onclick="resetDateRange()">↺ รีเซ็ต</button>
+        </div>
+        <button class="zoom-out-btn" onclick="zoomOutChart()" title="ซูมเอาต์">🔍− ซูมเอาต์</button>
+      </div>
+
+      <div class="key-stats" id="keyStats"></div>
+    </div>
+
+    <div class="detail-side">
+      <div class="side-card">
+        <div class="side-title">สถานะการถือครอง</div>
+        <div id="positionBlock"></div>
+      </div>
+
+      <div class="side-card">
+        <div class="side-title">
+          🔔 ตั้งเตือนราคา
+          <span id="alertCount" style="color:var(--muted);font-weight:400"></span>
+        </div>
+        <div class="alert-list" id="alertList"></div>
+        <div class="alert-form">
+          <select class="form-input dropdown" id="alertCond">
+            <option value="above">≥ สูงกว่า</option>
+            <option value="below">≤ ต่ำกว่า</option>
+          </select>
+          <input class="form-input" id="alertPrice" type="number" step="0.01" placeholder="ราคา">
+          <button class="btn btn-primary" onclick="addAlert()">+</button>
+        </div>
+      </div>
+
+      <div class="side-card">
+        <div class="side-title">เส้นที่ตีไว้</div>
+        <div class="drawn-list" id="drawnList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ---- SUPABASE SETUP ----
 const SUPABASE_URL = 'https://vpkjwsypxjpouxegyfkw.supabase.co';
@@ -779,14 +1077,19 @@ async function loadFromSupabase() {
     showToast('✅ โหลดข้อมูลสำเร็จ');
     renderAll();
     autoFetch();
+    await loadAlertsFromSB();
+    await loadDrawingsFromSB();
+    startAlertWatcher();
   } catch(err) {
-    console.error('Supabase load error:', err);
-    showToast('⚠️ โหลดไม่สำเร็จ ใช้ข้อมูลในเครื่อง', 'var(--red)');
+    const msg = err?.message || err?.error_description || err?.hint || err?.code || JSON.stringify(err) || 'Unknown error';
+    console.error('Supabase load error:', msg, err);
+    showToast('⚠️ Supabase: ' + msg, 'var(--red)');
     _stocks = JSON.parse(JSON.stringify(defaultStocks));
     _history = {};
     _loaded = true;
     renderAll();
     autoFetch();
+    startAlertWatcher();
   }
 }
 
@@ -1081,7 +1384,7 @@ function renderTable() {
     const dispPrice = fmtCur(parseFloat(s.price));
     return `<tr>
       <td>
-        <div class="ticker-cell">
+        <div class="ticker-cell" onclick="openDetail(${idx})">
           ${tickerIconHTML(s.ticker, s.color)}
           <div>
             <div class="ticker-name">${s.ticker}</div>
@@ -1096,9 +1399,9 @@ function renderTable() {
       <td id="lpct_${s.ticker}">${pctBadge(pct)}</td>
       <td>
         <div class="action-btns">
-          <button class="btn-icon" title="ประวัติ" onclick="openHist(${idx})">📊</button>
-          <button class="btn-icon" title="แก้ไข" onclick="openModal(${idx})">✏️</button>
-          <button class="btn-icon del" title="ลบ" onclick="deleteStock(${idx})">🗑️</button>
+          <button class="btn-icon" title="ประวัติ" onclick="event.stopPropagation();openHist(${idx})">📊</button>
+          <button class="btn-icon" title="แก้ไข" onclick="event.stopPropagation();openModal(${idx})">✏️</button>
+          <button class="btn-icon del" title="ลบ" onclick="event.stopPropagation();deleteStock(${idx})">🗑️</button>
         </div>
       </td>
     </tr>`;
@@ -1307,19 +1610,34 @@ async function fetchExchangeRate() {
 const FINNHUB_KEY = 'd8h7m9pr01qhjpmqv5tgd8h7m9pr01qhjpmqv5u0';
 let lastFetchTime = null;
 let fetchStatusTimer = null;
+// Once we learn the key is bad (401/403), stop hammering the API for the rest of the session.
+let finnhubKeyOk = null; // null = unknown/untested, true = working, false = confirmed invalid
 
 async function fetchOneTicker(ticker) {
   const url = `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_KEY}`;
   const res = await fetch(url);
+  if (res.status === 401 || res.status === 403) {
+    finnhubKeyOk = false;
+    throw new Error('FINNHUB_AUTH_FAILED');
+  }
   const data = await res.json();
   // data: { c: current, d: change, dp: changePct, h, l, o, pc }
   if (data && data.c && data.c > 0) {
+    finnhubKeyOk = true;
     return { price: data.c, change: data.d || 0, changePct: data.dp || 0 };
   }
   return null;
 }
 
 async function fetchRealPrices() {
+  // If we already confirmed the key is dead this session, don't spam requests —
+  // just keep the simulated live engine running and tell the user once.
+  if (finnhubKeyOk === false) {
+    const lbl = document.getElementById('liveLabel');
+    if (lbl) lbl.textContent = 'LIVE (sim · Finnhub key ใช้ไม่ได้)';
+    return;
+  }
+
   const stocks = getStocks();
   const btn = document.getElementById('refreshBtn');
   const lbl = document.getElementById('liveLabel');
@@ -1329,6 +1647,7 @@ async function fetchRealPrices() {
   lbl.textContent = 'FETCHING';
 
   const results = {};
+  let authFailed = false;
   // Finnhub free tier: 60 calls/min — fetch one by one with small delay
   for (let i = 0; i < stocks.length; i++) {
     const s = stocks[i];
@@ -1336,9 +1655,22 @@ async function fetchRealPrices() {
       const r = await fetchOneTicker(s.ticker);
       if (r) results[s.ticker] = r;
     } catch(e) {
-      console.warn('Finnhub fetch failed:', s.ticker, e);
+      if (e.message === 'FINNHUB_AUTH_FAILED') {
+        authFailed = true;
+        console.warn('[Finnhub] API key rejected (401/403) — stopping further requests this session.');
+        break; // no point hitting the same dead key 13 more times
+      }
+      console.warn('Finnhub fetch failed:', s.ticker, e.message);
     }
     if (i < stocks.length - 1) await new Promise(r => setTimeout(r, 120));
+  }
+
+  if (authFailed) {
+    showToast('⚠️ Finnhub API key หมดอายุ/ไม่ถูกต้อง (401) — ใช้ราคาจำลองแทน', 'var(--red)');
+    btn.textContent = '🔑 Key ผิด';
+    btn.disabled = false;
+    lbl.textContent = 'LIVE (sim · key ใช้ไม่ได้)';
+    return;
   }
 
   // Apply real prices
@@ -1384,6 +1716,7 @@ async function fetchRealPrices() {
     updateLiveSummary();
     updateTape();
     renderLineChart();
+    checkPriceAlerts();
   } else {
     lbl.textContent = 'LIVE (sim)';
   }
@@ -1446,11 +1779,12 @@ function tickPrices() {
   stocks.forEach(s => {
     const lp = livePrices[s.ticker];
     if (!lp) return;
-    // Random walk: slight bias toward mean-reversion
+    // Cosmetic-only random walk for the live "pulse" effect (sparklines, ticker tape, flashing cells).
+    // It must NEVER be allowed to drift away from the real price — it snaps back hard every tick
+    // so the portfolio total always reflects the actual last-known price, not accumulated noise.
     const base = parseFloat(s.price);
-    const drift = (base - lp.price) * 0.002; // gentle pull back
-    const vol = lp.price * 0.003 * (Math.random() - 0.5) * 2; // symmetric: -0.3% to +0.3%
-    const newPrice = Math.max(0.01, lp.price + drift + vol);
+    const vol = base * 0.0015 * (Math.random() - 0.5) * 2; // tiny cosmetic jitter: ±0.15% of REAL price
+    const newPrice = Math.max(0.01, base + vol);
     lp.prevPrice = lp.price;
     lp.price = parseFloat(newPrice.toFixed(2));
     lp.change = parseFloat((lp.price - base).toFixed(2));
@@ -1459,24 +1793,32 @@ function tickPrices() {
     if (lp.history.length > 60) lp.history.shift();
   });
   updateLiveTable();
+  // NOTE: summary cards (total portfolio value) intentionally use renderSummary()'s
+  // real-price calculation, not this cosmetic tick — see updateLiveSummary() below.
   updateLiveSummary();
   updateTape();
-  // update line chart data (last point)
+  // line chart's live-updating last point also anchors to REAL price, not the jittered one
   if (lineChartInst) {
     let total = 0;
-    stocks.forEach(s => { total += (livePrices[s.ticker]?.price||parseFloat(s.price)) * parseFloat(s.shares); });
+    stocks.forEach(s => { total += parseFloat(s.price) * parseFloat(s.shares); });
     const val = currency==='THB' ? total*THB_RATE : total;
     const data = lineChartInst.data.datasets[0].data;
     data[data.length-1] = parseFloat(val.toFixed(2));
     lineChartInst.update('none');
   }
+  checkPriceAlerts();
+  // live-update detail view chart if open
+  if (detailState.open) updateDetailLivePrice();
 }
 
 function updateLiveSummary() {
   const stocks = getStocks();
   let totalValue=0, totalCost=0;
   stocks.forEach(s => {
-    const p = livePrices[s.ticker]?.price || parseFloat(s.price);
+    // Portfolio total ALWAYS uses the real stored price (s.price), never the cosmetic
+    // jittered livePrices value — otherwise the total would visibly drift from what's
+    // actually recorded, which is confusing ("เงินไม่เท่ากัน") even though nothing real changed.
+    const p = parseFloat(s.price);
     totalValue += p * parseFloat(s.shares);
     totalCost  += parseFloat(s.cost) * parseFloat(s.shares);
   });
@@ -1514,10 +1856,16 @@ function updateLiveTable() {
     const weight = totalValue>0?(val/totalValue)*100:0;
     const up = lp.price >= lp.prevPrice;
 
-    // price cell
+    // price cell — update only the text node, preserving the sparkline canvas child
     const priceEl = document.getElementById(`lp_${s.ticker}`);
     if (priceEl) {
-      priceEl.textContent = fmtCur(lp.price);
+      // Update first text node only (don't destroy the canvas sparkline child)
+      const textNode = priceEl.firstChild;
+      if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+        textNode.textContent = fmtCur(lp.price);
+      } else {
+        priceEl.insertBefore(document.createTextNode(fmtCur(lp.price)), priceEl.firstChild);
+      }
       priceEl.classList.remove('flash-up','flash-dn');
       void priceEl.offsetWidth;
       priceEl.classList.add(up?'flash-up':'flash-dn');
@@ -1619,6 +1967,867 @@ function renderAll() {
   updateTape();
   restartInterval();
 }
+
+// ===================================================================
+// ====================  STOCK DETAIL VIEW (Webull-style)  =========
+// ===================================================================
+
+const detailState = {
+  open: false,
+  idx: -1,
+  ticker: null,
+  tf: '1M',
+  candles: [],       // [{t, o, h, l, c, v}]
+  drawTool: 'cursor',
+  drawings: [],       // {id, type:'hline'|'trend', ticker, p1:{t,price}, p2:{t,price}(trend only), color}
+  pendingPoint: null, // first click point for trend line
+  view: { xMin:0, xMax:0, yMin:0, yMax:0 }, // data-space bounds currently shown
+  hoverIdx: -1,
+  candleW: 0,
+  alerts: [],          // {id, ticker, cond:'above'|'below', price, triggered}
+  dataSource: null     // 'real' (Finnhub) | 'mock' (fallback simulated)
+};
+let detailResizeObs = null;
+
+function tfToDays(tf) {
+  return { '1D':1, '1M':30, '3M':90, '6M':180, '1Y':365, '5Y':1825 }[tf] || 30;
+}
+// Finnhub resolution + lookback (in days) per timeframe
+function tfToFinnhub(tf) {
+  return {
+    '1D': { resolution: '15',  days: 1    },  // 15-min bars, today
+    '1M': { resolution: 'D',   days: 30   },
+    '3M': { resolution: 'D',   days: 90   },
+    '6M': { resolution: 'D',   days: 180  },
+    '1Y': { resolution: 'W',   days: 365  },  // weekly bars for 1Y
+    '5Y': { resolution: 'M',   days: 1825 },  // monthly bars for 5Y
+  }[tf] || { resolution: 'D', days: 30 };
+}
+
+// ---- generate synthetic OHLC candles (FALLBACK ONLY, used when Finnhub candle data is unavailable) ----
+// Fixed to be deterministic ACROSS timeframes: a single continuous daily random-walk is generated
+// once per ticker (long enough for 1Y), then each timeframe just slices the tail of that same
+// series and resamples it (e.g. weekly for 1Y) — so switching timeframes shows the SAME underlying
+// price path at a different zoom level, instead of regenerating unrelated random data each time.
+const _mockSeriesCache = {};
+function getMockDailySeries(ticker, basePrice) {
+  const key = ticker;
+  if (_mockSeriesCache[key]) return _mockSeriesCache[key];
+  let seed = 0;
+  for (let i=0;i<ticker.length;i++) seed += ticker.charCodeAt(i) * (i+1);
+  const rnd = mulberry32(seed);
+  const totalDays = 1900; // enough for 5Y view + warm-up
+  const path = [];
+  let price = basePrice * 0.45; // start ~55% below current for 5Y
+  for (let i = 0; i < totalDays; i++) {
+    const remaining = totalDays - i;
+    const drift = (basePrice - price) / Math.max(remaining, 1) * 0.6;
+    const vol = price * 0.014;
+    price = Math.max(0.5, price + drift + (rnd()-0.5)*vol*2);
+    path.push(price);
+  }
+  path[path.length-1] = basePrice; // today's actual close
+  _mockSeriesCache[key] = { path, rnd: mulberry32(seed+1) };
+  return _mockSeriesCache[key];
+}
+
+function genCandles(basePrice, tf, ticker) {
+  const { path, rnd } = getMockDailySeries(ticker, basePrice);
+  const days = tfToDays(tf);
+  const today = new Date();
+
+  if (tf === '1D') {
+    // synthesize 48 intraday 30-min bars ending at basePrice, walking from yesterday's close
+    const prevClose = path[path.length-2] ?? basePrice*0.99;
+    const candles = [];
+    let price = prevClose;
+    for (let i = 47; i >= 0; i--) {
+      const t = new Date(today.getTime() - i * 30 * 60000);
+      const remaining = i+1;
+      const drift = (basePrice - price) / remaining * 0.5;
+      const vol = price * 0.0035;
+      const o = price;
+      let c = o + drift + (rnd()-0.5)*vol*2;
+      const h = Math.max(o,c) + rnd()*vol*0.5;
+      const l = Math.min(o,c) - rnd()*vol*0.5;
+      candles.push({ t: t.getTime(), o, h: Math.max(h,o,c), l: Math.min(l,o,c), c, v: Math.floor(80000+rnd()*500000) });
+      price = c;
+    }
+    candles[candles.length-1].c = basePrice;
+    candles[candles.length-1].h = Math.max(candles[candles.length-1].h, basePrice);
+    candles[candles.length-1].l = Math.min(candles[candles.length-1].l, basePrice);
+    return candles;
+  }
+
+  // Slice the last N days from the shared daily path (same series for every timeframe)
+  const slice = path.slice(Math.max(0, path.length - days));
+  const dailyCandles = slice.map((p, i) => {
+    const prevP = i===0 ? p*0.998 : slice[i-1];
+    const t = new Date(today); t.setDate(t.getDate() - (slice.length-1-i));
+    const o = prevP, c = p;
+    const vol = Math.abs(c-o) + p*0.004;
+    const h = Math.max(o,c) + rnd()*vol*0.4;
+    const l = Math.min(o,c) - rnd()*vol*0.4;
+    return { t: t.getTime(), o, h: Math.max(h,o,c), l: Math.min(l,o,c), c, v: Math.floor(80000+rnd()*500000) };
+  });
+
+  if (tf !== '1Y' && tf !== '5Y') return dailyCandles;
+
+  if (tf === '5Y') {
+    // Resample daily -> monthly for 5Y
+    const monthly = [];
+    for (let i = 0; i < dailyCandles.length; i += 21) {
+      const chunk = dailyCandles.slice(i, i+21);
+      if (!chunk.length) continue;
+      monthly.push({
+        t: chunk[chunk.length-1].t,
+        o: chunk[0].o,
+        c: chunk[chunk.length-1].c,
+        h: Math.max(...chunk.map(k=>k.h)),
+        l: Math.min(...chunk.map(k=>k.l)),
+        v: chunk.reduce((a,k)=>a+k.v,0)
+      });
+    }
+    return monthly;
+  }
+
+  // Resample daily -> weekly for 1Y so we still show the SAME path, just lower resolution
+  const weekly = [];
+  for (let i = 0; i < dailyCandles.length; i += 7) {
+    const chunk = dailyCandles.slice(i, i+7);
+    if (!chunk.length) continue;
+    weekly.push({
+      t: chunk[chunk.length-1].t,
+      o: chunk[0].o,
+      c: chunk[chunk.length-1].c,
+      h: Math.max(...chunk.map(k=>k.h)),
+      l: Math.min(...chunk.map(k=>k.l)),
+      v: chunk.reduce((a,k)=>a+k.v,0)
+    });
+  }
+  return weekly;
+}
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+
+async function openDetail(idx) {
+  const stocks = getStocks();
+  const s = stocks[idx];
+  if (!s) return;
+  detailState.open = true;
+  detailState.idx = idx;
+  detailState.ticker = s.ticker;
+  detailState.tf = '1M';
+  detailState.drawTool = 'cursor';
+  detailState.pendingPoint = null;
+  detailState.candles = [];
+
+  document.getElementById('d_ticker').textContent = s.ticker;
+  document.getElementById('d_sector').textContent = s.sector;
+  document.querySelectorAll('#tfGroup .tf-btn').forEach(b=>b.classList.toggle('active', b.dataset.tf==='1M'));
+  setDrawTool('cursor');
+
+  renderPositionBlock(idx);
+  renderAlertsUI();
+  renderDrawnListUI();
+  updateDetailLivePrice();
+
+  document.getElementById('detailOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  // size canvas after layout settles, then fetch+draw
+  requestAnimationFrame(async ()=> {
+    setupCanvas();
+    await loadCandlesForTicker(s.ticker, detailState.tf);
+  });
+  if (!detailResizeObs) {
+    detailResizeObs = new ResizeObserver(()=>{ if(detailState.open){ setupCanvas(); drawChart(); } });
+    detailResizeObs.observe(document.getElementById('candleCanvas').parentElement);
+  }
+}
+
+function closeDetail() {
+  detailState.open = false;
+  document.getElementById('detailOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ---- Real historical candles from Finnhub, with graceful fallback to mock series ----
+async function fetchFinnhubCandles(ticker, tf) {
+  if (finnhubKeyOk === false) throw new Error('FINNHUB_AUTH_FAILED');
+  const { resolution, days } = tfToFinnhub(tf);
+  const to = Math.floor(Date.now() / 1000);
+  const from = to - days * 86400 - 86400; // small buffer
+  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=${resolution}&from=${from}&to=${to}&token=${FINNHUB_KEY}`;
+  const res = await fetch(url);
+  if (res.status === 401 || res.status === 403) {
+    finnhubKeyOk = false;
+    throw new Error('FINNHUB_AUTH_FAILED');
+  }
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  if (!data || data.s !== 'ok' || !Array.isArray(data.t) || data.t.length === 0) {
+    throw new Error(data && data.s ? ('Finnhub status: ' + data.s) : 'No data');
+  }
+  finnhubKeyOk = true;
+  const candles = data.t.map((ts, i) => ({
+    t: ts * 1000,
+    o: data.o[i], h: data.h[i], l: data.l[i], c: data.c[i], v: data.v ? data.v[i] : 0
+  }));
+  return candles;
+}
+
+async function loadCandlesForTicker(ticker, tf) {
+  const stocks = getStocks();
+  const s = stocks.find(x=>x.ticker===ticker);
+  const base = livePrices[ticker]?.price || parseFloat(s?.price || 100);
+
+  setChartDataSourceLabel('⏳ กำลังดึงราคาจริง...', '#0099ff');
+  try {
+    const real = await fetchFinnhubCandles(ticker, tf);
+    // keep last candle's close in sync with current live price for a smooth "live tail"
+    if (real.length) {
+      real[real.length-1].c = base;
+      real[real.length-1].h = Math.max(real[real.length-1].h, base);
+      real[real.length-1].l = Math.min(real[real.length-1].l, base);
+    }
+    detailState.candles = real;
+    detailState.dataSource = 'real';
+    setChartDataSourceLabel('✅ ราคาจริงจาก Finnhub', 'var(--green)');
+  } catch (err) {
+    if (err.message === 'FINNHUB_AUTH_FAILED') {
+      console.warn('[Finnhub] Key invalid — using simulated chart (no further candle requests this session).');
+    } else {
+      console.warn('Finnhub candle fetch failed, falling back to simulated chart:', err.message);
+    }
+    detailState.candles = genCandles(base, tf, ticker);
+    detailState.dataSource = 'mock';
+    setChartDataSourceLabel(
+      err.message === 'FINNHUB_AUTH_FAILED' ? '⚠️ Finnhub key ใช้ไม่ได้ — กราฟจำลอง' : '⚠️ ใช้กราฟจำลอง (ดึงราคาจริงไม่สำเร็จ)',
+      'var(--red)'
+    );
+  }
+  fitView();
+  drawChart();
+  initDateRangeUI();
+}
+
+function setChartDataSourceLabel(text, color) {
+  const hint = document.getElementById('chartHint');
+  if (hint) {
+    hint.textContent = text;
+    hint.style.color = color || 'var(--muted)';
+    clearTimeout(hint._revertTimer);
+    hint._revertTimer = setTimeout(() => {
+      if (!detailState.open) return;
+      const tool = detailState.drawTool;
+      if (tool==='cursor') hint.textContent = 'เลื่อนดูกราฟ';
+      else if (tool==='hline') hint.textContent = 'คลิกบนกราฟเพื่อตีเส้นแนวนอน';
+      else if (tool==='trend') hint.textContent = 'คลิก 2 จุดเพื่อตีเส้นเทรนด์';
+      hint.style.color = 'var(--muted)';
+    }, 3500);
+  }
+  // persistent badge in topbar
+  const badge = document.getElementById('d_datasource');
+  if (badge) {
+    if (detailState.dataSource === 'real') {
+      badge.textContent = '● REAL DATA';
+      badge.style.background = 'rgba(0,229,160,0.12)';
+      badge.style.color = 'var(--green)';
+    } else if (detailState.dataSource === 'mock') {
+      badge.textContent = '● SIMULATED';
+      badge.style.background = 'rgba(255,77,106,0.12)';
+      badge.style.color = 'var(--red)';
+    } else {
+      badge.textContent = '';
+    }
+  }
+}
+
+function fitView() {
+  const c = detailState.candles;
+  if (!c.length) return;
+  let lo = Infinity, hi = -Infinity;
+  c.forEach(k => { lo = Math.min(lo, k.l); hi = Math.max(hi, k.h); });
+  const pad = (hi-lo)*0.08 || hi*0.02;
+  detailState.view = { xMin: 0, xMax: c.length-1, yMin: lo-pad, yMax: hi+pad };
+}
+
+// ---- timeframe switching ----
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('#tfGroup .tf-btn');
+  if (!btn) return;
+  document.querySelectorAll('#tfGroup .tf-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  detailState.tf = btn.dataset.tf;
+  await loadCandlesForTicker(detailState.ticker, detailState.tf);
+});
+
+function setDrawTool(tool) {
+  detailState.drawTool = tool;
+  detailState.pendingPoint = null;
+  ['cursor','hline','trend'].forEach(t=>{
+    const map = { cursor:'toolCursor', hline:'toolHLine', trend:'toolTrend' };
+    document.getElementById(map[t]).classList.toggle('active', t===tool);
+  });
+  const hint = document.getElementById('chartHint');
+  if (tool==='cursor') hint.textContent = 'เลื่อนดูกราฟ';
+  else if (tool==='hline') hint.textContent = 'คลิกบนกราฟเพื่อตีเส้นแนวนอน';
+  else if (tool==='trend') hint.textContent = 'คลิก 2 จุดเพื่อตีเส้นเทรนด์';
+}
+
+function clearLastDrawing() {
+  const arr = detailState.drawings.filter(d=>d.ticker===detailState.ticker);
+  if (!arr.length) return;
+  const last = arr[arr.length-1];
+  detailState.drawings = detailState.drawings.filter(d=>d.id!==last.id);
+  saveDrawingsToSB();
+  renderDrawnListUI();
+  drawChart();
+}
+function clearAllDrawings() {
+  if (!confirm('ลบเส้นทั้งหมดของ ' + detailState.ticker + ' ?')) return;
+  detailState.drawings = detailState.drawings.filter(d=>d.ticker!==detailState.ticker);
+  saveDrawingsToSB();
+  renderDrawnListUI();
+  drawChart();
+}
+
+// ---- Canvas setup & rendering ----
+let dctx = null, dcanvas = null, DPR = 1;
+function setupCanvas() {
+  dcanvas = document.getElementById('candleCanvas');
+  const wrap = dcanvas.parentElement;
+  DPR = window.devicePixelRatio || 1;
+  const cssW = wrap.clientWidth - 28; // minus padding
+  const cssH = 420;
+  dcanvas.style.width = cssW + 'px';
+  dcanvas.style.height = cssH + 'px';
+  dcanvas.width = cssW * DPR;
+  dcanvas.height = cssH * DPR;
+  dctx = dcanvas.getContext('2d');
+  dctx.setTransform(DPR,0,0,DPR,0,0);
+}
+
+function priceToY(price, view, h) {
+  return h - ((price - view.yMin) / (view.yMax - view.yMin)) * h;
+}
+function yToPrice(y, view, h) {
+  return view.yMin + (1 - y/h) * (view.yMax - view.yMin);
+}
+function idxToX(i, view, w) {
+  return ((i - view.xMin) / (view.xMax - view.xMin || 1)) * w;
+}
+function xToIdx(x, view, w) {
+  return view.xMin + (x / w) * (view.xMax - view.xMin);
+}
+
+function drawChart() {
+  if (!dctx || !dcanvas) return;
+  const w = dcanvas.width / DPR, h = dcanvas.height / DPR;
+  dctx.clearRect(0,0,w,h);
+  const candles = detailState.candles;
+  if (!candles.length) return;
+  const view = detailState.view;
+
+  // grid
+  dctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  dctx.lineWidth = 1;
+  const gridLines = 5;
+  for (let i=0;i<=gridLines;i++) {
+    const y = (h/gridLines)*i;
+    dctx.beginPath(); dctx.moveTo(0,y); dctx.lineTo(w,y); dctx.stroke();
+    const price = yToPrice(y, view, h);
+    dctx.fillStyle = '#5a6478';
+    dctx.font = '10px "Space Mono", monospace';
+    dctx.fillText('$'+price.toFixed(2), 6, y-4 < 10 ? 12 : y-4);
+  }
+
+  // candles
+  const visibleN = Math.max(1, view.xMax - view.xMin);
+  const candleW = Math.max(1.5, (w / visibleN) * 0.62);
+  detailState.candleW = candleW;
+  const startI = Math.max(0, Math.floor(view.xMin));
+  const endI = Math.min(candles.length-1, Math.ceil(view.xMax));
+
+  for (let i = startI; i <= endI; i++) {
+    const k = candles[i];
+    if (!k) continue;
+    const x = idxToX(i, view, w);
+    const yO = priceToY(k.o, view, h);
+    const yC = priceToY(k.c, view, h);
+    const yH = priceToY(k.h, view, h);
+    const yL = priceToY(k.l, view, h);
+    const up = k.c >= k.o;
+    const color = up ? '#00e5a0' : '#ff4d6a';
+    dctx.strokeStyle = color;
+    dctx.fillStyle = color;
+    dctx.lineWidth = 1;
+    // wick
+    dctx.beginPath(); dctx.moveTo(x, yH); dctx.lineTo(x, yL); dctx.stroke();
+    // body
+    const bodyTop = Math.min(yO,yC), bodyH = Math.max(1, Math.abs(yO-yC));
+    dctx.fillRect(x - candleW/2, bodyTop, candleW, bodyH);
+  }
+
+  // x-axis date labels
+  {
+    const xLabelCount = Math.min(6, endI - startI + 1);
+    const step = Math.max(1, Math.floor((endI - startI + 1) / xLabelCount));
+    dctx.fillStyle = '#5a6478';
+    dctx.font = '9px "Space Mono", monospace';
+    dctx.textAlign = 'center';
+    for (let i = startI; i <= endI; i += step) {
+      const k = candles[i];
+      if (!k) continue;
+      const x = idxToX(i, view, w);
+      const dt = new Date(k.t);
+      let label;
+      if (detailState.tf === '1D') {
+        label = dt.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:false});
+      } else if (detailState.tf === '5Y') {
+        label = dt.toLocaleDateString('en-US', {month:'short', year:'2-digit'});
+      } else if (detailState.tf === '1Y') {
+        label = dt.toLocaleDateString('en-US', {month:'short', year:'2-digit'});
+      } else {
+        label = dt.toLocaleDateString('en-US', {day:'numeric', month:'short'});
+      }
+      dctx.fillText(label, Math.max(30, Math.min(x, w-30)), h - 4);
+    }
+    dctx.textAlign = 'left';
+  }
+
+  // drawings (hlines, trendlines) for this ticker
+  const myDrawings = detailState.drawings.filter(d=>d.ticker===detailState.ticker);
+  myDrawings.forEach(d => {
+    dctx.strokeStyle = d.color || '#f5c842';
+    dctx.lineWidth = 1.4;
+    dctx.setLineDash([]);
+    if (d.type === 'hline') {
+      const y = priceToY(d.p1.price, view, h);
+      dctx.beginPath(); dctx.moveTo(0,y); dctx.lineTo(w,y); dctx.stroke();
+      dctx.fillStyle = d.color || '#f5c842';
+      dctx.font = 'bold 10px "Space Mono", monospace';
+      const label = '$'+d.p1.price.toFixed(2);
+      const tw = dctx.measureText(label).width;
+      dctx.fillRect(w-tw-12, y-9, tw+10, 14);
+      dctx.fillStyle = '#0a0c10';
+      dctx.fillText(label, w-tw-7, y+2);
+    } else if (d.type === 'trend') {
+      const x1 = idxToX(d.p1.i, view, w), y1 = priceToY(d.p1.price, view, h);
+      const x2 = idxToX(d.p2.i, view, w), y2 = priceToY(d.p2.price, view, h);
+      dctx.beginPath(); dctx.moveTo(x1,y1); dctx.lineTo(x2,y2); dctx.stroke();
+      dctx.fillStyle = d.color || '#f5c842';
+      dctx.beginPath(); dctx.arc(x1,y1,3,0,7); dctx.fill();
+      dctx.beginPath(); dctx.arc(x2,y2,3,0,7); dctx.fill();
+    }
+  });
+
+  // alert lines (dashed) for this ticker
+  detailState.alerts.filter(a=>a.ticker===detailState.ticker && !a.triggered).forEach(a => {
+    const y = priceToY(a.price, view, h);
+    if (y < -10 || y > h+10) return;
+    dctx.strokeStyle = a.cond==='above' ? 'rgba(0,229,160,0.6)' : 'rgba(255,77,106,0.6)';
+    dctx.lineWidth = 1.2;
+    dctx.setLineDash([5,4]);
+    dctx.beginPath(); dctx.moveTo(0,y); dctx.lineTo(w,y); dctx.stroke();
+    dctx.setLineDash([]);
+    dctx.fillStyle = a.cond==='above' ? '#00e5a0' : '#ff4d6a';
+    dctx.font = '9px "Space Mono", monospace';
+    dctx.fillText((a.cond==='above'?'🔔≥ $':'🔔≤ $')+a.price.toFixed(2), 6, y-4 < 10 ? y+12 : y-4);
+  });
+
+  // pending trend point preview
+  if (detailState.pendingPoint && detailState.drawTool==='trend') {
+    const px = idxToX(detailState.pendingPoint.i, view, w);
+    const py = priceToY(detailState.pendingPoint.price, view, h);
+    dctx.fillStyle = '#f5c842';
+    dctx.beginPath(); dctx.arc(px,py,4,0,7); dctx.fill();
+  }
+
+  // crosshair
+  if (detailState.hoverIdx >= 0) {
+    const k = candles[Math.round(detailState.hoverIdx)];
+    if (k) {
+      const x = idxToX(Math.round(detailState.hoverIdx), view, w);
+      dctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      dctx.lineWidth = 1;
+      dctx.setLineDash([3,3]);
+      dctx.beginPath(); dctx.moveTo(x,0); dctx.lineTo(x,h); dctx.stroke();
+      if (detailState._hoverY != null) {
+        dctx.beginPath(); dctx.moveTo(0,detailState._hoverY); dctx.lineTo(w,detailState._hoverY); dctx.stroke();
+      }
+      dctx.setLineDash([]);
+    }
+  }
+}
+
+// ---- mouse interaction: pan/zoom, drawing ----
+function attachCanvasEvents() {
+  const cv = document.getElementById('candleCanvas');
+  let isPanning = false, panStartX = 0, panStartView = null;
+
+  cv.onmousedown = (e) => {
+    const rect = cv.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const w = rect.width, h = rect.height;
+    const i = xToIdx(x, detailState.view, w);
+    const price = yToPrice(y, detailState.view, h);
+
+    if (detailState.drawTool === 'hline') {
+      detailState.drawings.push({ id: 'd'+Date.now(), type:'hline', ticker: detailState.ticker, p1:{price}, color:'#f5c842' });
+      saveDrawingsToSB();
+      renderDrawnListUI();
+      drawChart();
+      return;
+    }
+    if (detailState.drawTool === 'trend') {
+      if (!detailState.pendingPoint) {
+        detailState.pendingPoint = { i, price };
+        drawChart();
+      } else {
+        detailState.drawings.push({
+          id:'d'+Date.now(), type:'trend', ticker: detailState.ticker,
+          p1: detailState.pendingPoint, p2:{i, price}, color:'#0099ff'
+        });
+        detailState.pendingPoint = null;
+        saveDrawingsToSB();
+        renderDrawnListUI();
+        drawChart();
+      }
+      return;
+    }
+    // cursor tool -> pan
+    isPanning = true; panStartX = x; panStartView = {...detailState.view};
+  };
+
+  cv.onmousemove = (e) => {
+    const rect = cv.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const w = rect.width, h = rect.height;
+    detailState.hoverIdx = xToIdx(x, detailState.view, w);
+    detailState._hoverY = y;
+
+    const i = Math.round(detailState.hoverIdx);
+    const k = detailState.candles[i];
+    const readout = document.getElementById('crosshairReadout');
+    if (k) {
+      const dt = new Date(k.t);
+      const dstr = detailState.tf==='1D' ? dt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}) : dt.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'});
+      readout.style.display = 'block';
+      readout.innerHTML = `${dstr}<br>O ${k.o.toFixed(2)} H ${k.h.toFixed(2)}<br>L ${k.l.toFixed(2)} C ${k.c.toFixed(2)}<br>ราคา: $${yToPrice(y,detailState.view,h).toFixed(2)}`;
+    }
+
+    if (isPanning) {
+      const w2 = rect.width;
+      const dx = x - panStartX;
+      const shift = -(dx / w2) * (panStartView.xMax - panStartView.xMin);
+      let xMin = panStartView.xMin + shift, xMax = panStartView.xMax + shift;
+      const span = xMax - xMin;
+      if (xMin < 0) { xMin = 0; xMax = span; }
+      if (xMax > detailState.candles.length-1) { xMax = detailState.candles.length-1; xMin = xMax-span; }
+      detailState.view.xMin = xMin; detailState.view.xMax = xMax;
+    }
+    drawChart();
+  };
+
+  cv.onmouseup = () => { isPanning = false; };
+  cv.onmouseleave = () => { isPanning = false; detailState.hoverIdx = -1; document.getElementById('crosshairReadout').style.display='none'; drawChart(); };
+
+  cv.onwheel = (e) => {
+    e.preventDefault();
+    const rect = cv.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const w = rect.width;
+    const centerI = xToIdx(x, detailState.view, w);
+    const zoom = e.deltaY > 0 ? 1.12 : 0.89;
+    let { xMin, xMax } = detailState.view;
+    let newMin = centerI - (centerI - xMin) * zoom;
+    let newMax = centerI + (xMax - centerI) * zoom;
+    if (newMax - newMin < 8) return;
+    if (newMin < 0) newMin = 0;
+    if (newMax > detailState.candles.length - 1) newMax = detailState.candles.length - 1;
+    if (newMax - newMin < 8) return;
+    detailState.view.xMin = newMin; detailState.view.xMax = newMax;
+    drawChart();
+  };
+}
+attachCanvasEvents();
+
+// ---- Zoom Out ----
+function zoomOutChart() {
+  const c = detailState.candles;
+  if (!c.length) return;
+  const v = detailState.view;
+  const span = v.xMax - v.xMin;
+  const center = (v.xMin + v.xMax) / 2;
+  let newSpan = span * 1.5;
+  let newMin = center - newSpan / 2;
+  let newMax = center + newSpan / 2;
+  if (newMin < 0) newMin = 0;
+  if (newMax > c.length - 1) newMax = c.length - 1;
+  detailState.view.xMin = newMin;
+  detailState.view.xMax = newMax;
+  drawChart();
+}
+
+// ---- Date Range ----
+function applyDateRange() {
+  const fromVal = document.getElementById('rangeFrom').value;
+  const toVal   = document.getElementById('rangeTo').value;
+  if (!fromVal && !toVal) return;
+  const c = detailState.candles;
+  if (!c.length) return;
+  const fromTs = fromVal ? new Date(fromVal).getTime() : -Infinity;
+  const toTs   = toVal   ? new Date(toVal + 'T23:59:59').getTime() : Infinity;
+  let xMin = 0, xMax = c.length - 1;
+  for (let i = 0; i < c.length; i++) {
+    if (c[i].t >= fromTs) { xMin = i; break; }
+  }
+  for (let i = c.length - 1; i >= 0; i--) {
+    if (c[i].t <= toTs) { xMax = i; break; }
+  }
+  if (xMax <= xMin) return;
+  detailState.view.xMin = xMin;
+  detailState.view.xMax = xMax;
+  // re-fit Y to visible candles
+  let lo = Infinity, hi = -Infinity;
+  for (let i = Math.max(0, Math.floor(xMin)); i <= Math.min(c.length-1, Math.ceil(xMax)); i++) {
+    lo = Math.min(lo, c[i].l); hi = Math.max(hi, c[i].h);
+  }
+  const pad = (hi-lo)*0.08 || hi*0.02;
+  detailState.view.yMin = lo - pad;
+  detailState.view.yMax = hi + pad;
+  drawChart();
+}
+
+function resetDateRange() {
+  document.getElementById('rangeFrom').value = '';
+  document.getElementById('rangeTo').value   = '';
+  fitView();
+  drawChart();
+}
+
+// Populate date range defaults when opening detail
+function initDateRangeUI() {
+  const c = detailState.candles;
+  if (!c.length) return;
+  const fmt = ts => new Date(ts).toISOString().slice(0,10);
+  document.getElementById('rangeFrom').value = fmt(c[0].t);
+  document.getElementById('rangeTo').value   = fmt(c[c.length-1].t);
+}
+
+function quickAlertFromCrosshair() {
+  if (detailState.hoverIdx < 0 || !dctx) {
+    alert('เลื่อนเมาส์ไปบนกราฟที่ตำแหน่งราคาที่ต้องการก่อน แล้วกดปุ่มนี้');
+    return;
+  }
+  const rect = dcanvas.getBoundingClientRect();
+  const h = rect.height;
+  const price = yToPrice(detailState._hoverY ?? h/2, detailState.view, h);
+  const current = livePrices[detailState.ticker]?.price || price;
+  document.getElementById('alertCond').value = price >= current ? 'above' : 'below';
+  document.getElementById('alertPrice').value = price.toFixed(2);
+  document.getElementById('alertPrice').focus();
+}
+
+// ---- Key stats panel ----
+function renderKeyStats() {
+  const candles = detailState.candles;
+  if (!candles.length) return;
+  const last = candles[candles.length-1];
+  const stocks = getStocks();
+  const s = stocks.find(x=>x.ticker===detailState.ticker);
+  const lp = livePrices[detailState.ticker];
+  const price = lp?.price || last.c;
+  let hi=-Infinity, lo=Infinity, vol=0;
+  candles.forEach(k=>{ hi=Math.max(hi,k.h); lo=Math.min(lo,k.l); vol+=k.v; });
+  const stats = [
+    { label:'เปิด (Open)', val: '$'+last.o.toFixed(2) },
+    { label:'สูงสุด (High)', val: '$'+hi.toFixed(2) },
+    { label:'ต่ำสุด (Low)', val: '$'+lo.toFixed(2) },
+    { label:'ปริมาณ (Volume)', val: (vol/1e6).toFixed(2)+'M' },
+    { label:'ราคาซื้อของคุณ', val: '$'+parseFloat(s?.cost||0).toFixed(2) },
+    { label:'จำนวนหุ้น', val: fmt(s?.shares||0,3) },
+    { label:'มูลค่ารวม', val: fmtCur(price*(s?.shares||0)) },
+    { label:'กำไร/ขาดทุน %', val: (s?.cost ? (((price-s.cost)/s.cost)*100).toFixed(2) : '0.00')+'%' },
+  ];
+  document.getElementById('keyStats').innerHTML = stats.map(st=>`
+    <div class="kstat"><div class="kstat-label">${st.label}</div><div class="kstat-val">${st.val}</div></div>
+  `).join('');
+}
+
+function renderPositionBlock(idx) {
+  const s = getStocks()[idx];
+  if (!s) return;
+  const lp = livePrices[s.ticker];
+  const price = lp?.price || parseFloat(s.price);
+  const val = price * parseFloat(s.shares);
+  const cost = parseFloat(s.cost) * parseFloat(s.shares);
+  const pl = val - cost;
+  const pct = cost>0 ? (pl/cost)*100 : 0;
+  document.getElementById('positionBlock').innerHTML = `
+    <div class="position-row"><span class="lbl">จำนวนหุ้น</span><span class="val">${fmt(s.shares,3)}</span></div>
+    <div class="position-row"><span class="lbl">ราคาต้นทุน</span><span class="val">$${fmt(s.cost)}</span></div>
+    <div class="position-row"><span class="lbl">มูลค่าปัจจุบัน</span><span class="val">${fmtCur(val)}</span></div>
+    <div class="position-row"><span class="lbl">กำไร/ขาดทุน</span><span class="val ${pl>=0?'green':'red'}">${pl>=0?'+':''}${fmtCur(pl)} (${pct>=0?'+':''}${pct.toFixed(2)}%)</span></div>
+  `;
+}
+
+function updateDetailLivePrice() {
+  if (!detailState.open) return;
+  const lp = livePrices[detailState.ticker];
+  const s = getStocks().find(x=>x.ticker===detailState.ticker);
+  const price = lp?.price || parseFloat(s?.price||0);
+  const base = parseFloat(s?.price||price);
+  const chg = price - base, pct = base ? (chg/base*100) : 0;
+  document.getElementById('d_price').textContent = fmtCur(price);
+  const chgEl = document.getElementById('d_chg');
+  chgEl.textContent = `${chg>=0?'+':''}${fmt(chg)} (${pct>=0?'+':''}${pct.toFixed(2)}%)`;
+  chgEl.className = 'detail-chg ' + (chg>=0?'green':'red');
+  renderKeyStats();
+  if (detailState.idx >= 0) renderPositionBlock(detailState.idx);
+  if (dctx) {
+    // update last candle close live for a "live tail"
+    const c = detailState.candles;
+    if (c.length) {
+      c[c.length-1].c = price;
+      c[c.length-1].h = Math.max(c[c.length-1].h, price);
+      c[c.length-1].l = Math.min(c[c.length-1].l, price);
+    }
+    drawChart();
+  }
+}
+
+// ---- Drawn lines list UI ----
+function renderDrawnListUI() {
+  const list = detailState.drawings.filter(d=>d.ticker===detailState.ticker);
+  const el = document.getElementById('drawnList');
+  if (!list.length) { el.innerHTML = '<div class="drawn-empty">ยังไม่มีเส้นที่ตีไว้</div>'; return; }
+  el.innerHTML = list.map(d => {
+    const label = d.type==='hline' ? `เส้นแนวนอน $${d.p1.price.toFixed(2)}` : `เส้นเทรนด์ $${d.p1.price.toFixed(2)} → $${d.p2.price.toFixed(2)}`;
+    return `<div class="drawn-item"><span><span class="swatch" style="background:${d.color}"></span>${label}</span><button class="alert-del" onclick="removeDrawing('${d.id}')">✕</button></div>`;
+  }).join('');
+}
+function removeDrawing(id) {
+  detailState.drawings = detailState.drawings.filter(d=>d.id!==id);
+  saveDrawingsToSB();
+  renderDrawnListUI();
+  drawChart();
+}
+
+// ---- Persist drawings to Supabase (table: chart_drawings) ----
+async function saveDrawingsToSB() {
+  try {
+    const rows = detailState.drawings.map(d => ({
+      id: d.id, ticker: d.ticker, type: d.type, color: d.color,
+      data: JSON.stringify({ p1: d.p1, p2: d.p2 || null })
+    }));
+    // Replace-all-for-ticker strategy: delete then insert (simplest correctness for small datasets)
+    await sb.from('chart_drawings').delete().eq('ticker', detailState.ticker);
+    if (rows.length) await sb.from('chart_drawings').insert(rows.filter(r=>r.ticker===detailState.ticker));
+  } catch(e) {
+    console.warn('chart_drawings table may not exist yet:', e.message);
+  }
+}
+async function loadDrawingsFromSB() {
+  try {
+    const { data, error } = await sb.from('chart_drawings').select('*');
+    if (error) throw error;
+    detailState.drawings = (data||[]).map(r => {
+      const parsed = JSON.parse(r.data);
+      return { id:r.id, ticker:r.ticker, type:r.type, color:r.color, p1:parsed.p1, p2:parsed.p2 };
+    });
+  } catch(e) {
+    console.warn('No chart_drawings table found (optional) — drawings will be session-only.', e.message);
+  }
+}
+
+// ---- Price Alerts ----
+function renderAlertsUI() {
+  const list = detailState.alerts.filter(a=>a.ticker===detailState.ticker);
+  document.getElementById('alertCount').textContent = list.length ? `(${list.length})` : '';
+  const el = document.getElementById('alertList');
+  if (!list.length) { el.innerHTML = '<div class="alert-empty">ยังไม่มีการตั้งเตือน</div>'; return; }
+  el.innerHTML = list.map(a => `
+    <div class="alert-item">
+      <span class="alert-cond ${a.cond}">${a.cond==='above'?'≥':'≤'} $${fmt(a.price)}</span>
+      <button class="alert-del" onclick="removeAlert('${a.id}')">✕</button>
+    </div>
+  `).join('');
+}
+
+async function addAlert() {
+  const cond = document.getElementById('alertCond').value;
+  const price = parseFloat(document.getElementById('alertPrice').value);
+  if (isNaN(price) || price <= 0) { alert('กรุณากรอกราคาที่ถูกต้อง'); return; }
+  const a = { id:'a'+Date.now(), ticker: detailState.ticker, cond, price, triggered:false };
+  detailState.alerts.push(a);
+  document.getElementById('alertPrice').value = '';
+  renderAlertsUI();
+  drawChart();
+  try {
+    await sb.from('price_alerts').insert({ id:a.id, ticker:a.ticker, cond:a.cond, price:a.price, triggered:false });
+  } catch(e) { console.warn('price_alerts table may not exist yet:', e.message); }
+  showToast('🔔 ตั้งเตือนแล้ว');
+}
+async function removeAlert(id) {
+  detailState.alerts = detailState.alerts.filter(a=>a.id!==id);
+  renderAlertsUI();
+  drawChart();
+  try { await sb.from('price_alerts').delete().eq('id', id); } catch(e) {}
+}
+async function loadAlertsFromSB() {
+  try {
+    const { data, error } = await sb.from('price_alerts').select('*').eq('triggered', false);
+    if (error) throw error;
+    detailState.alerts = (data||[]).map(r => ({ id:r.id, ticker:r.ticker, cond:r.cond, price:parseFloat(r.price), triggered:r.triggered }));
+  } catch(e) {
+    console.warn('No price_alerts table found (optional) — alerts will be session-only.', e.message);
+  }
+}
+
+function checkPriceAlerts() {
+  if (!detailState.alerts.length) return;
+  detailState.alerts.forEach(a => {
+    if (a.triggered) return;
+    const price = livePrices[a.ticker]?.price;
+    if (price == null) return;
+    const hit = a.cond==='above' ? price >= a.price : price <= a.price;
+    if (hit) {
+      a.triggered = true;
+      fireAlertToast(a, price);
+      sb.from('price_alerts').update({ triggered: true }).eq('id', a.id).then(()=>{}).catch(()=>{});
+      if (detailState.open && detailState.ticker===a.ticker) { renderAlertsUI(); drawChart(); }
+    }
+  });
+  // prune triggered after firing once
+  detailState.alerts = detailState.alerts.filter(a=>!a.triggered);
+}
+
+function fireAlertToast(a, price) {
+  const t = document.createElement('div');
+  t.className = 'toast-alert';
+  t.innerHTML = `<div class="ta-title">🔔 ${a.ticker} ${a.cond==='above'?'ขึ้นถึง':'ลงถึง'} $${fmt(a.price)}</div>
+                  <div class="ta-body">ราคาปัจจุบัน: $${fmt(price)}</div>`;
+  document.body.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .4s'; setTimeout(()=>t.remove(),400); }, 6000);
+}
+
+function startAlertWatcher() {
+  setInterval(checkPriceAlerts, 3000);
+}
+
+// Keyboard: ESC closes detail view
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && detailState.open) closeDetail();
+});
 
 // ---- BOOT ----
 
