@@ -3005,8 +3005,10 @@ function checkPriceAlerts() {
 // anyone who opens this page. Treat it as public if you deploy this file
 // anywhere other than your own machine, and rotate it in the LINE
 // Developers Console if that ever happens.
-const LINE_CHANNEL_ACCESS_TOKEN = 'PASTE_YOUR_NEW_CHANNEL_ACCESS_TOKEN_HERE';
-const LINE_USER_ID = 'PASTE_YOUR_USER_ID_HERE'; // the "Your user ID" value from Basic settings
+const LINE_CHANNEL_ACCESS_TOKEN = 'DfQJgR1RKumXshI6faWEKBHnZzYmfPMMuZJvU4dTA/9pUEkSWHTccrhppsqVZUhN4ZipaW1Z4JzLz1polGtoeuZm8PZ9J8RytYq+isrljujXih2mIAgRCnfO6fAomsyqQriCvRGnftGgjGjRR5LbTgdB04t89/1O/w1cDnyilFU=';
+const LINE_USER_ID = 'Uc10f293775ce693cdd62833236082a18'; // the "Your user ID" value from Basic settings
+
+const LINE_WORKER_URL = 'https://crimson-resonance-d086.joeitnac.workers.dev/';
 
 async function sendLineNotification(text) {
   if (!LINE_CHANNEL_ACCESS_TOKEN || LINE_CHANNEL_ACCESS_TOKEN.startsWith('PASTE_')) {
@@ -3014,13 +3016,11 @@ async function sendLineNotification(text) {
     return;
   }
   try {
-    const res = await fetch('https://api.line.me/v2/bot/message/push', {
+    const res = await fetch(LINE_WORKER_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        token: LINE_CHANNEL_ACCESS_TOKEN,
         to: LINE_USER_ID,
         messages: [{ type: 'text', text }]
       })
@@ -3028,12 +3028,11 @@ async function sendLineNotification(text) {
     if (!res.ok) {
       const err = await res.text();
       console.error('LINE push failed:', res.status, err);
+    } else {
+      console.log('LINE notification sent!');
     }
   } catch (e) {
-    // Most likely culprit if this fires: LINE's API does not send CORS
-    // headers, so the browser blocks the request before it even reaches
-    // LINE's servers. Check the browser console for a CORS error to confirm.
-    console.error('LINE push error (possibly CORS-blocked):', e);
+    console.error('LINE push error:', e);
   }
 }
 
