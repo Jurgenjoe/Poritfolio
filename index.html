@@ -70,6 +70,7 @@
   <button class="tab-btn" onclick="switchTab('wallet')">💰 กระเป๋าเงิน</button>
   <button class="tab-btn" onclick="switchTab('assets')">🏦 สินทรัพย์อื่น</button>
   <button class="tab-btn" onclick="switchTab('import')">📄 Import PDF</button>
+  <button class="tab-btn" onclick="switchTab('gold')">🥇 ออมทอง</button>
 </div>
 
 <!-- ===== TAB: PORTFOLIO (existing) ===== -->
@@ -163,29 +164,25 @@
 <!-- ===== TAB: WALLET ===== -->
 <div id="tab_wallet" class="tab-page">
 <div class="main">
-  <div class="page-header"><h2>💰 กระเป๋าเงิน</h2></div>
+  <div class="page-header"><h2>💱 กระเป๋าเงิน / FX Tracker</h2></div>
   <div class="summary-grid" id="walletCards"></div>
   <div class="charts-row" style="margin-top:18px">
     <div class="chart-card" style="grid-column:span 2">
-      <div class="chart-title">📅 ประวัติฝาก-ถอน</div>
+      <div class="chart-title">📅 ประวัติแลกเงิน (THB สะสม)</div>
       <canvas id="walletChart" height="160"></canvas>
     </div>
   </div>
   <div style="margin:18px 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    <select class="dropdown" id="txType">
-      <option value="deposit">ฝากเงิน</option>
-      <option value="withdraw">ถอนเงิน</option>
-      <option value="exchange">แลกเปลี่ยน</option>
-    </select>
-    <input class="search-box" type="number" id="txAmount" placeholder="จำนวน THB" style="max-width:160px">
-    <input class="search-box" type="number" id="txRate" placeholder="อัตราแลก (ถ้าแลก)" style="max-width:160px">
-    <input class="search-box" type="date" id="txDate" style="max-width:160px">
-    <input class="search-box" type="text" id="txNote" placeholder="หมายเหตุ" style="max-width:200px">
-    <button class="btn btn-primary" onclick="addWalletTx()">+ บันทึก</button>
+    <span style="color:var(--accent);font-weight:600;font-size:0.9rem">💱 แลกเงิน THB→USD</span>
+    <input class="search-box" type="number" id="txAmount" placeholder="จำนวน THB ที่แลก" style="max-width:160px">
+    <input class="search-box" type="number" id="txRate" placeholder="อัตราแลก (THB/USD)" style="max-width:170px">
+    <input class="search-box" type="date" id="txDate" style="max-width:150px">
+    <input class="search-box" type="text" id="txNote" placeholder="หมายเหตุ (เช่น SCB, Wise)" style="max-width:200px">
+    <button class="btn btn-primary" onclick="addWalletTx()">+ บันทึกแลกเงิน</button>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>วันที่</th><th>ประเภท</th><th>จำนวน (THB)</th><th>อัตราแลก</th><th>USD ได้</th><th>หมายเหตุ</th><th></th></tr></thead>
+      <thead><tr><th>วันที่</th><th>THB ที่แลก</th><th>อัตราแลก</th><th>USD ที่ได้</th><th>หมายเหตุ</th><th></th></tr></thead>
       <tbody id="walletBody"></tbody>
     </table>
   </div>
@@ -220,7 +217,66 @@
   </div>
   <div class="chart-card" style="margin-top:18px">
     <div class="chart-title">🌐 Net Worth ทั้งหมด (THB)</div>
-    <canvas id="networthChart" height="200"></canvas>
+    <canvas id="networthChart" height="200" style="max-width:70%;margin:0 auto;display:block"></canvas>
+  </div>
+</div>
+</div>
+
+<!-- ===== TAB: GOLD ===== -->
+<div id="tab_gold" class="tab-page">
+<div class="main">
+  <div class="page-header" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <h2>🥇 ออมทอง</h2>
+    <div class="gold-price-banner" id="goldPriceBanner">
+      <div class="gold-price-banner-label">ทองคำแท่ง 96.5%</div>
+      <div class="gold-price-row">
+        <div class="gold-price-box">
+          <div class="gold-price-box-label">รับซื้อ</div>
+          <div class="gold-price-box-val" id="goldBuyVal">—</div>
+        </div>
+        <div class="gold-price-box">
+          <div class="gold-price-box-label">ขายออก</div>
+          <div class="gold-price-box-val" id="goldSellVal">—</div>
+        </div>
+      </div>
+      <div class="gold-price-meta" id="goldPriceMeta">⏳ กำลังโหลดราคาทอง...</div>
+      <button class="btn-icon" onclick="initGoldTab()" title="รีเฟรชราคาทอง" style="margin-left:auto">🔄</button>
+    </div>
+  </div>
+  <div class="summary-grid" id="goldCards"></div>
+
+  <!-- Add form -->
+  <div class="chart-card" style="margin-top:18px">
+    <div class="chart-title">➕ เพิ่มรายการซื้อทอง</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+      <input class="search-box" type="number" id="g_buyPrice" placeholder="ราคาที่ซื้อ (THB/บาททอง)" style="max-width:200px">
+      <input class="search-box" type="number" id="g_weight" placeholder="น้ำหนัก (บาทหรือกรัม)" style="max-width:180px">
+      <select class="dropdown" id="g_unit">
+        <option value="baht">บาททอง</option>
+        <option value="gram">กรัม</option>
+      </select>
+      <input class="search-box" type="date" id="g_date" style="max-width:150px">
+      <input class="search-box" type="text" id="g_note" placeholder="หมายเหตุ" style="max-width:180px">
+      <button class="btn btn-primary" onclick="addGoldEntry()">+ เพิ่ม</button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap" style="margin-top:18px">
+    <table>
+      <thead><tr>
+        <th>#</th>
+        <th>วันที่</th>
+        <th>ราคาที่ซื้อ (THB)</th>
+        <th>น้ำหนัก</th>
+        <th>ราคาปัจจุบัน (THB)</th>
+        <th>บวก/ลบ (THB)</th>
+        <th>%</th>
+        <th>หมายเหตุ</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="goldBody"></tbody>
+    </table>
   </div>
 </div>
 </div>

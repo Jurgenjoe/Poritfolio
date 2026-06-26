@@ -2052,6 +2052,7 @@ function switchTab(name) {
   if (name === 'wallet') renderWalletTab();
   if (name === 'assets') renderAssetsTab();
   if (name === 'import') renderImportHistory();
+  if (name === 'gold') initGoldTab();
 }
 
 // ================================================================
@@ -2176,15 +2177,16 @@ async function loadWalletFromSB() {
 }
 
 async function addWalletTx() {
-  const type = document.getElementById('txType').value;
   const amount = parseFloat(document.getElementById('txAmount').value);
-  const rate = parseFloat(document.getElementById('txRate').value) || THB_RATE;
-  const date = document.getElementById('txDate').value || new Date().toISOString().slice(0, 10);
-  const note = document.getElementById('txNote').value.trim();
-  if (isNaN(amount) || amount <= 0) { showToast('กรุณากรอกจำนวนเงิน', 'var(--red)'); return; }
+  const rate   = parseFloat(document.getElementById('txRate').value);
+  const date   = document.getElementById('txDate').value || new Date().toISOString().slice(0, 10);
+  const note   = document.getElementById('txNote').value.trim();
 
-  const usd = type === 'exchange' ? parseFloat((amount / rate).toFixed(4)) : 0;
-  const tx = { id: 'w' + Date.now(), type, amount, rate, usd, date, note };
+  if (isNaN(amount) || amount <= 0) { showToast('กรุณากรอกจำนวน THB ที่แลก', 'var(--red)'); return; }
+  if (isNaN(rate)   || rate   <= 0) { showToast('กรุณากรอกอัตราแลก THB/USD', 'var(--red)'); return; }
+
+  const usd = parseFloat((amount / rate).toFixed(4));
+  const tx = { id: 'w' + Date.now(), type: 'fx_buy', amount, rate, usd, date, note };
   _walletTxs.push(tx);
 
   try {
@@ -2194,7 +2196,7 @@ async function addWalletTx() {
   }
 
   ['txAmount', 'txRate', 'txNote'].forEach(id => document.getElementById(id).value = '');
-  showToast('💰 บันทึกแล้ว');
+  showToast('💱 บันทึกการแลกเงินแล้ว');
   renderWalletTab();
 }
 
@@ -2207,80 +2209,132 @@ async function deleteWalletTx(id) {
 }
 
 function renderWalletTab() {
-  const deposits = _walletTxs.filter(t => t.type === 'deposit').reduce((a, t) => a + t.amount, 0);
-  const withdraws = _walletTxs.filter(t => t.type === 'withdraw').reduce((a, t) => a + t.amount, 0);
-  const exchanges = _walletTxs.filter(t => t.type === 'exchange').reduce((a, t) => a + t.amount, 0);
+  // รวม fx_buy (manual) + exchange (legacy auto-import ก่อน v3)
+  const fxTxs      = _walletTxs.filter(t => t.type === 'fx_buy' || t.type === 'deposit');
+  const fxBuyTHB   = _walletTxs.filter(t => t.type === 'fx_buy').reduce((a, t) => a + t.amount, 0);
+  const fxBuyUSD   = _walletTxs.filter(t => t.type === 'fx_buy').reduce((a, t) => a + (t.usd || 0), 0);
+  const legacyTHB  = _walletTxs.filter(t => t.type === 'deposit').reduce((a, t) => a + t.amount, 0); // legacy ฝากเงิน
+  const totalFxTHB = fxBuyTHB + legacyTHB;
+
+  // ต้นทุน USD จากพอร์ตหุ้น (_stocks) — ดึงตรงจาก portfolio
+  const portfolioCostUSD = _stocks.reduce((a, s) => a + (parseFloat(s.cost || 0) * parseFloat(s.shares || 0)), 0);
+  // ต้นทุน THB = cost USD × avg rate ที่แลก
+  const avgRate = fxBuyUSD > 0 ? fxBuyTHB / fxBuyUSD : THB_RATE;
+  const portfolioCostTHB = portfolioCostUSD * avgRate;
+
+  // USD คงเหลือ = USD แลกมา - ต้นทุน USD ในพอร์ต
+  const usdBalance = fxBuyUSD - portfolioCostUSD;
+
+  // กำไร/ขาดทุนค่าเงิน (FX P&L):
+  // มูลค่าพอร์ตปัจจุบัน (THB) = _stocks.reduce price × shares × currentRate
+  const portfolioValueTHB = _stocks.reduce((a, s) => a + (parseFloat(s.price || s.cost || 0) * parseFloat(s.shares || 0)), 0) * THB_RATE;
+  // fxPnl คำนวณด้านล่างตอน render cards แล้ว
+
+  // sell returns
   const sellReturns = _walletTxs.filter(t => t.type === 'sell_return').reduce((a, t) => a + t.amount, 0);
-  const totalUSD = _walletTxs.filter(t => t.type === 'exchange').reduce((a, t) => a + (t.usd || 0), 0);
-  // balance = ฝาก - ถอน - ซื้อหุ้น + เงินจากขายหุ้น
-  const balance = deposits - withdraws - exchanges + sellReturns;
+
+  // FX P&L: เปรียบเทียบ avg rate ที่เราแลก vs THB_RATE ปัจจุบัน
+  // ถ้าแลกแพง (avgRate > THB_RATE ปัจจุบัน) = ขาดทุนค่าเงิน
+  const rateDiff = THB_RATE - avgRate; // บวก = ปัจจุบันแพงกว่า (เราแลกถูก), ลบ = เราแลกแพง
+  const fxPnlUSD = fxBuyUSD; // USD ที่เราแลก
+  const fxPnlTHB = rateDiff * fxBuyUSD; // กำไร/ขาดทุนค่าเงิน (THB)
+  const fxPnlPct = avgRate > 0 ? (rateDiff / avgRate * 100) : 0;
 
   document.getElementById('walletCards').innerHTML = `
     <div class="card">
-      <div class="card-label">ยอดเงิน THB คงเหลือ</div>
-      <div class="card-value ${balance >= 0 ? 'green' : 'red'}">฿${fmt(balance)}</div>
-      <div class="card-sub">ฝากสุทธิ ฿${fmt(deposits - withdraws)}</div>
+      <div class="card-label">💱 THB ที่แลกรวม</div>
+      <div class="card-value">฿${fmt(fxBuyTHB)}</div>
+      <div class="card-sub">${_walletTxs.filter(t => t.type === 'fx_buy').length} ครั้ง</div>
     </div>
     <div class="card">
-      <div class="card-label">ใช้ซื้อหุ้นรวม</div>
-      <div class="card-value red">-฿${fmt(exchanges)}</div>
-      <div class="card-sub">≈ $${fmt(totalUSD)} USD</div>
+      <div class="card-label">💵 USD รวมที่ได้</div>
+      <div class="card-value">$${fmt(fxBuyUSD, 2)}</div>
+      <div class="card-sub">จาก ฿${fmt(fxBuyTHB)}</div>
+    </div>
+    <div class="card" style="border:1px solid rgba(255,255,255,0.08)">
+      <div class="card-label">⚖️ avg rate ของเรา</div>
+      <div class="card-value" style="font-size:1.1rem">${fxBuyUSD > 0 ? avgRate.toFixed(4) : '—'} <span style="font-size:0.7rem;color:var(--muted)">THB/USD</span></div>
+      <div class="card-sub">แลก ${_walletTxs.filter(t => t.type === 'fx_buy').length} ครั้ง weighted avg</div>
+    </div>
+    <div class="card" style="border:1px solid rgba(255,255,255,0.08)">
+      <div class="card-label">🌐 อัตราปัจจุบัน (BOT)</div>
+      <div class="card-value" style="font-size:1.1rem">${THB_RATE.toFixed(4)} <span style="font-size:0.7rem;color:var(--muted)">THB/USD</span></div>
+      <div class="card-sub ${rateDiff >= 0 ? 'green' : 'red'}" style="font-size:0.82rem;font-weight:600">
+        ${rateDiff >= 0 ? '▲ ปัจจุบันแพงกว่า' : '▼ ปัจจุบันถูกกว่า'} ${Math.abs(rateDiff).toFixed(4)} THB/USD
+      </div>
     </div>
     <div class="card">
-      <div class="card-label">รับจากขายหุ้นรวม</div>
-      <div class="card-value green">+฿${fmt(sellReturns)}</div>
+      <div class="card-label">📈 กำไร/ขาดทุนค่าเงิน</div>
+      <div class="card-value ${fxPnlTHB >= 0 ? 'green' : 'red'}">${fxPnlTHB >= 0 ? '+' : ''}฿${fmt(Math.abs(fxPnlTHB), 0)}</div>
+      <div class="card-sub ${fxPnlTHB >= 0 ? 'green' : 'red'}">
+        ${fxPnlTHB >= 0 ? '✅ แลกถูก ได้กำไรค่าเงิน' : '⚠️ แลกแพง ขาดทุนค่าเงิน'}<br>
+        ${fxPnlPct >= 0 ? '+' : ''}${fxPnlPct.toFixed(2)}% | $${fmt(fxBuyUSD,2)} × ${rateDiff >= 0 ? '+' : ''}${rateDiff.toFixed(4)}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">💵 USD คงเหลือ</div>
+      <div class="card-value ${usdBalance >= 0 ? 'green' : 'red'}">${usdBalance >= 0 ? '+' : ''}$${fmt(usdBalance, 2)}</div>
+      <div class="card-sub">แลกมา $${fmt(fxBuyUSD,2)} / ลงทุนไป $${fmt(portfolioCostUSD,2)}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">📤 รับจากขายหุ้น</div>
+      <div class="card-value ${sellReturns > 0 ? 'green' : ''}">${sellReturns > 0 ? '+฿' + fmt(sellReturns) : '—'}</div>
       <div class="card-sub">${_walletTxs.filter(t => t.type === 'sell_return').length} รายการ</div>
-    </div>
-    <div class="card">
-      <div class="card-label">ฝากรวมทั้งหมด</div>
-      <div class="card-value">฿${fmt(deposits)}</div>
-      <div class="card-sub">${_walletTxs.filter(t => t.type === 'deposit').length} ครั้ง</div>
     </div>
   `;
 
-  // Wallet line chart
-  const sorted = [..._walletTxs].sort((a, b) => a.date.localeCompare(b.date));
+  // Chart: สะสม THB ที่แลก ต่อครั้ง
+  const sorted = [..._walletTxs].filter(t => t.type === 'fx_buy').sort((a, b) => a.date.localeCompare(b.date));
   let running = 0;
-  const chartLabels = [], chartVals = [];
+  const chartLabels = [], chartVals = [], rateVals = [];
   sorted.forEach(t => {
-    if (t.type === 'deposit') running += t.amount;
-    else if (t.type === 'withdraw') running -= t.amount;
-    else if (t.type === 'exchange') running -= t.amount;
-    else if (t.type === 'sell_return') running += t.amount;
+    running += t.amount;
     chartLabels.push(t.date.slice(5));
     chartVals.push(parseFloat(running.toFixed(2)));
+    rateVals.push(t.rate || 0);
   });
   const ctx = document.getElementById('walletChart').getContext('2d');
   if (walletChartInst) walletChartInst.destroy();
   const grad = ctx.createLinearGradient(0, 0, 0, 160);
-  grad.addColorStop(0, 'rgba(0,153,255,0.3)');
-  grad.addColorStop(1, 'rgba(0,153,255,0)');
+  grad.addColorStop(0, 'rgba(0,200,120,0.3)');
+  grad.addColorStop(1, 'rgba(0,200,120,0)');
   walletChartInst = new Chart(ctx, {
-    type: 'line',
-    data: { labels: chartLabels, datasets: [{ data: chartVals, borderColor: '#0099ff', backgroundColor: grad, borderWidth: 2, tension: 0.4, fill: true, pointRadius: 3 }] },
+    type: 'bar',
+    data: {
+      labels: chartLabels,
+      datasets: [
+        { label: 'THB สะสม', data: chartVals, backgroundColor: 'rgba(0,153,255,0.5)', borderColor: '#0099ff', borderWidth: 1, yAxisID: 'y' },
+        { label: 'อัตราแลก', data: rateVals, type: 'line', borderColor: '#f59e0b', backgroundColor: 'transparent', borderWidth: 2, tension: 0.4, pointRadius: 4, yAxisID: 'y2' }
+      ]
+    },
     options: {
-      responsive: true, plugins: { legend: { display: false } },
+      responsive: true,
+      plugins: { legend: { display: true, labels: { color: '#5a6478', font: { size: 10 } } } },
       scales: {
-        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#5a6478', font: { size: 10 }, maxTicksLimit: 8 } },
-        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#5a6478', font: { size: 10 }, callback: v => '฿' + fmt(v, 0) } }
+        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#5a6478', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#5a6478', font: { size: 10 }, callback: v => '฿' + fmt(v, 0) }, position: 'left' },
+        y2: { grid: { display: false }, ticks: { color: '#f59e0b', font: { size: 10 }, callback: v => v.toFixed(2) }, position: 'right' }
       }
     }
   });
 
-  // Wallet table
+  // Table - แสดงเฉพาะ fx_buy และ sell_return
   const tbody = document.getElementById('walletBody');
-  const txSorted = [..._walletTxs].sort((a, b) => b.date.localeCompare(a.date));
-  tbody.innerHTML = txSorted.length === 0 ? `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">ยังไม่มีรายการ</td></tr>` :
-    txSorted.map(t => {
-      const cls = t.type === 'deposit' ? 'tx-deposit' : t.type === 'withdraw' ? 'tx-withdraw' : t.type === 'sell_return' ? 'tx-deposit' : 'tx-exchange';
-      const label = t.type === 'deposit' ? '💚 ฝาก' : t.type === 'withdraw' ? '🔴 ถอน' : t.type === 'sell_return' ? '📤 ขายหุ้น' : '🔄 ซื้อหุ้น';
-      const sign = (t.type === 'deposit' || t.type === 'sell_return') ? '+' : '-';
+  const txSorted = [..._walletTxs]
+    .filter(t => t.type === 'fx_buy' || t.type === 'sell_return' || t.type === 'deposit')
+    .sort((a, b) => b.date.localeCompare(a.date));
+  tbody.innerHTML = txSorted.length === 0
+    ? `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">ยังไม่มีรายการแลกเงิน</td></tr>`
+    : txSorted.map(t => {
+      const isSell = t.type === 'sell_return';
+      const isFx = t.type === 'fx_buy' || t.type === 'deposit';
+      const cls = isSell ? 'tx-deposit' : 'tx-exchange';
+      const label = isSell ? '📤 ขายหุ้น' : '💱 แลกเงิน';
       return `<tr>
         <td class="mono" style="color:var(--muted)">${t.date}</td>
-        <td><span class="${cls}">${label}</span></td>
-        <td class="mono ${cls}">${sign}฿${fmt(t.amount)}</td>
+        <td class="mono tx-exchange">-฿${fmt(t.amount)}</td>
         <td class="mono" style="color:var(--muted)">${t.rate > 0 ? t.rate.toFixed(4) : '—'}</td>
-        <td class="mono">${t.usd > 0 ? '$' + fmt(t.usd, 4) : '—'}</td>
+        <td class="mono green">+$${t.usd > 0 ? fmt(t.usd, 4) : '—'}</td>
         <td style="color:var(--muted);font-size:0.8rem">${t.note || ''}</td>
         <td><button class="btn-icon del" onclick="deleteWalletTx('${t.id}')">✕</button></td>
       </tr>`;
@@ -2394,10 +2448,12 @@ function renderAssetsTab() {
     data: { labels: netData.map(d => d.label), datasets: [{ data: netData.map(d => d.val), backgroundColor: netData.map(d => d.color), borderColor: '#111419', borderWidth: 2 }] },
     options: {
       responsive: true,
+      maintainAspectRatio: true,
       plugins: {
         legend: { position: 'right', labels: { color: '#e8edf5', font: { size: 11 }, boxWidth: 14, padding: 10 } },
         tooltip: { callbacks: { label: c => { const total = c.dataset.data.reduce((a, b) => a + b, 0); return ` ${c.label}: ฿${fmt(c.parsed)} (${((c.parsed / total) * 100).toFixed(1)}%)`; } } }
-      }
+      },
+      layout: { padding: 10 }
     }
   });
 }
@@ -3066,6 +3122,7 @@ async function bootApp() {
   await loadWalletFromSB();
   await loadAssetsFromSB();
   await loadImportHistoryFromSB();
+  await loadGoldFromSB();
 }
 
 // Keyboard support
@@ -3081,3 +3138,209 @@ if (sessionStorage.getItem('portfolio_auth') === '1') {
   bootApp();
 }
 
+
+
+// ================================================================
+// ==================== GOLD TAB =================================
+// ================================================================
+let _goldEntries = [];
+let GOLD_PRICE_THB = 0;       // ใช้เป็นมูลค่าปัจจุบันของพอร์ต = ราคา "รับซื้อ" (เงินจริงที่จะได้ถ้าขายวันนี้)
+let GOLD_PRICE_BUY_THB = 0;   // รับซื้อ — ทองคำแท่ง 96.5%
+let GOLD_PRICE_SELL_THB = 0;  // ขายออก — ทองคำแท่ง 96.5%
+let GOLD_PRICE_SOURCE = '';
+let GOLD_PRICE_UPDATED = '';
+const GOLD_GRAM_PER_BAHT = 15.244; // 1 บาททอง = 15.244 กรัม
+
+async function fetchGoldPrice() {
+  // ---- 1) แหล่งหลัก: สมาคมค้าทองคำ (Gold Traders Association of Thailand) ----
+  // ราคาทองคำแท่ง 96.5% ที่ร้านทองทั่วประเทศใช้อ้างอิงจริง (ไม่ใช่ค่าประมาณจากราคาทองโลก)
+  // ดึงผ่าน community API ที่ crawl ข้อมูลจาก goldtraders.or.th โดยตรง
+  const officialSources = [
+    { url: 'https://api.chnwt.dev/thai-gold-api/latest', label: 'สมาคมค้าทองคำ (goldtraders.or.th)' },
+    { url: 'https://thai-gold-api.vercel.app/latest', label: 'สมาคมค้าทองคำ (mirror)' },
+  ];
+  for (const src of officialSources) {
+    try {
+      const r = await fetch(src.url);
+      if (!r.ok) continue;
+      const d = await r.json();
+      const bar = d?.response?.price?.gold_bar;
+      if (d.status === 'success' && bar?.buy && bar?.sell) {
+        const buy = parseFloat(String(bar.buy).replace(/,/g, ''));
+        const sell = parseFloat(String(bar.sell).replace(/,/g, ''));
+        if (buy > 0 && sell > 0) {
+          GOLD_PRICE_BUY_THB = buy;
+          GOLD_PRICE_SELL_THB = sell;
+          GOLD_PRICE_THB = buy; // มูลค่าพอร์ต = ราคารับซื้อ (สิ่งที่จะได้จริงถ้าขายวันนี้)
+          GOLD_PRICE_SOURCE = src.label;
+          GOLD_PRICE_UPDATED = [d.response.update_date, d.response.update_time].filter(Boolean).join(' ');
+          return GOLD_PRICE_THB;
+        }
+      }
+    } catch (e) { console.warn('[Gold] source failed:', src.url, e.message); }
+  }
+
+  // ---- 2) สำรองสุดท้าย: ประมาณการจากราคาทองโลก (Spot) แปลงเป็น THB/บาท ----
+  // ใช้เฉพาะตอนแหล่งข้อมูลจริงข้างบนล่มทั้งคู่ — ไม่ใช่ราคาจริงจากสมาคม ค่าจะเพี้ยนจากราคาตลาดจริงได้
+  const spotApis = [
+    { url: 'https://data-asg.goldprice.org/dbXRates/USD', parse: d => d.items[0].xauPrice },
+    { url: 'https://api.metals.live/v1/spot/gold', parse: d => d[0].price },
+  ];
+  for (const api of spotApis) {
+    try {
+      const r = await fetch(api.url);
+      const d = await r.json();
+      const spotUSD = api.parse(d);
+      if (spotUSD > 0) {
+        const est = parseFloat(((spotUSD / 31.1035) * GOLD_GRAM_PER_BAHT * THB_RATE).toFixed(2));
+        GOLD_PRICE_BUY_THB = est;
+        GOLD_PRICE_SELL_THB = est;
+        GOLD_PRICE_THB = est;
+        GOLD_PRICE_SOURCE = '⚠️ ประมาณการจากราคาทองโลก (ดึงราคาสมาคมค้าทองคำไม่สำเร็จ)';
+        GOLD_PRICE_UPDATED = new Date().toLocaleString('th-TH');
+        return GOLD_PRICE_THB;
+      }
+    } catch (e) { continue; }
+  }
+
+  // ---- 3) ทุกแหล่งล่มหมด: ใช้ค่าล่าสุดที่เคยดึงได้ในเซสชันนี้ หรือค่า default ----
+  GOLD_PRICE_BUY_THB = GOLD_PRICE_BUY_THB || 61000;
+  GOLD_PRICE_SELL_THB = GOLD_PRICE_SELL_THB || GOLD_PRICE_BUY_THB;
+  GOLD_PRICE_THB = GOLD_PRICE_THB || GOLD_PRICE_BUY_THB;
+  GOLD_PRICE_SOURCE = GOLD_PRICE_SOURCE || '❌ ดึงราคาทองไม่สำเร็จ (ใช้ค่าเดิม/ค่าประมาณ)';
+  GOLD_PRICE_UPDATED = GOLD_PRICE_UPDATED || '—';
+  return GOLD_PRICE_THB;
+}
+
+async function loadGoldFromSB() {
+  try {
+    const { data, error } = await sb.from('gold_entries').select('*').order('date', { ascending: true });
+    if (error) throw error;
+    _goldEntries = (data || []).map(r => ({ ...r, buy_price: parseFloat(r.buy_price), weight: parseFloat(r.weight) }));
+  } catch (e) {
+    _goldEntries = JSON.parse(localStorage.getItem('gold_entries') || '[]');
+  }
+}
+
+async function saveGoldToSB(entry) {
+  try { await sb.from('gold_entries').upsert({ ...entry }); }
+  catch (e) { localStorage.setItem('gold_entries', JSON.stringify(_goldEntries)); }
+}
+
+async function initGoldTab() {
+  document.getElementById('goldPriceMeta').textContent = '⏳ กำลังโหลดราคาทอง...';
+  document.getElementById('goldBuyVal').textContent = '—';
+  document.getElementById('goldSellVal').textContent = '—';
+  await fetchGoldPrice();
+  document.getElementById('goldBuyVal').textContent = '฿' + fmt(GOLD_PRICE_BUY_THB, 0);
+  document.getElementById('goldSellVal').textContent = '฿' + fmt(GOLD_PRICE_SELL_THB, 0);
+  document.getElementById('goldPriceMeta').innerHTML =
+    `📡 ${GOLD_PRICE_SOURCE}${GOLD_PRICE_UPDATED && GOLD_PRICE_UPDATED !== '—' ? ' · อัปเดต ' + GOLD_PRICE_UPDATED : ''}`;
+  renderGoldTab();
+}
+
+async function addGoldEntry() {
+  const buyPrice = parseFloat(document.getElementById('g_buyPrice').value);
+  const weight   = parseFloat(document.getElementById('g_weight').value);
+  const unit     = document.getElementById('g_unit').value;
+  const date     = document.getElementById('g_date').value || new Date().toISOString().slice(0, 10);
+  const note     = document.getElementById('g_note').value.trim();
+
+  if (isNaN(buyPrice) || buyPrice <= 0) { showToast('กรุณากรอกราคาที่ซื้อ', 'var(--red)'); return; }
+  if (isNaN(weight)   || weight   <= 0) { showToast('กรุณากรอกน้ำหนัก', 'var(--red)'); return; }
+
+  // แปลงเป็น บาททอง เสมอ
+  const weightBaht = unit === 'gram' ? parseFloat((weight / GOLD_GRAM_PER_BAHT).toFixed(6)) : weight;
+  const weightGram = unit === 'gram' ? weight : parseFloat((weight * GOLD_GRAM_PER_BAHT).toFixed(4));
+
+  const entry = {
+    id: 'g' + Date.now(),
+    buy_price: buyPrice,   // THB ต่อ บาททอง
+    weight: weightBaht,    // บาททอง
+    weight_gram: weightGram,
+    unit: 'baht',
+    date, note
+  };
+  _goldEntries.push(entry);
+  await saveGoldToSB(entry);
+
+  ['g_buyPrice', 'g_weight', 'g_note'].forEach(id => document.getElementById(id).value = '');
+  showToast('🥇 เพิ่มรายการทองแล้ว');
+  renderGoldTab();
+}
+
+async function deleteGoldEntry(id) {
+  _goldEntries = _goldEntries.filter(e => e.id !== id);
+  try { await sb.from('gold_entries').delete().eq('id', id); }
+  catch (e) { localStorage.setItem('gold_entries', JSON.stringify(_goldEntries)); }
+  renderGoldTab();
+}
+
+function renderGoldTab() {
+  if (GOLD_PRICE_THB <= 0) return;
+
+  // Summary stats
+  let totalCost = 0, totalWeight = 0, totalCurrentVal = 0;
+  _goldEntries.forEach(e => {
+    totalCost       += e.buy_price * e.weight;
+    totalWeight     += e.weight;
+    totalCurrentVal += GOLD_PRICE_THB * e.weight;
+  });
+  const totalPL     = totalCurrentVal - totalCost;
+  const totalPLPct  = totalCost > 0 ? (totalPL / totalCost * 100) : 0;
+  const avgBuyPrice = totalWeight > 0 ? totalCost / totalWeight : 0;
+
+  document.getElementById('goldCards').innerHTML = `
+    <div class="card">
+      <div class="card-label">⚖️ น้ำหนักรวม</div>
+      <div class="card-value">${fmt(totalWeight, 4)} บาท</div>
+      <div class="card-sub">≈ ${fmt(totalWeight * GOLD_GRAM_PER_BAHT, 3)} กรัม</div>
+    </div>
+    <div class="card">
+      <div class="card-label">💸 ต้นทุนรวม</div>
+      <div class="card-value">฿${fmt(totalCost)}</div>
+      <div class="card-sub">avg ฿${fmt(avgBuyPrice, 0)}/บาท</div>
+    </div>
+    <div class="card">
+      <div class="card-label">💰 มูลค่าปัจจุบัน</div>
+      <div class="card-value">฿${fmt(totalCurrentVal)}</div>
+      <div class="card-sub">@ ฿${fmt(GOLD_PRICE_THB, 0)}/บาท (ราคารับซื้อ)</div>
+    </div>
+    <div class="card">
+      <div class="card-label">📈 กำไร/ขาดทุน</div>
+      <div class="card-value ${totalPL >= 0 ? 'green' : 'red'}">${totalPL >= 0 ? '+' : ''}฿${fmt(totalPL)}</div>
+      <div class="card-sub ${totalPL >= 0 ? 'green' : 'red'}">${totalPLPct >= 0 ? '+' : ''}${totalPLPct.toFixed(2)}%</div>
+    </div>
+    <div class="card">
+      <div class="card-label">⚖️ avg ราคาซื้อของเรา</div>
+      <div class="card-value" style="font-size:1rem">฿${fmt(avgBuyPrice, 0)}<span style="font-size:0.7rem;color:var(--muted)">/บาท</span></div>
+      <div class="card-sub ${GOLD_PRICE_THB >= avgBuyPrice ? 'green' : 'red'}">
+        ปัจจุบัน ${GOLD_PRICE_THB >= avgBuyPrice ? '▲ สูงกว่า' : '▼ ต่ำกว่า'} ${fmt(Math.abs(GOLD_PRICE_THB - avgBuyPrice), 0)} THB/บาท
+      </div>
+    </div>
+  `;
+
+  // Table rows
+  const tbody = document.getElementById('goldBody');
+  if (_goldEntries.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">ยังไม่มีรายการ — กรอกด้านบนเพื่อเพิ่ม</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = _goldEntries.map((e, i) => {
+    const currentVal = GOLD_PRICE_THB * e.weight;
+    const cost       = e.buy_price * e.weight;
+    const pl         = currentVal - cost;
+    const plPct      = cost > 0 ? (pl / cost * 100) : 0;
+    return `<tr>
+      <td class="mono" style="color:var(--muted)">${i + 1}</td>
+      <td class="mono" style="color:var(--muted)">${e.date || '—'}</td>
+      <td class="mono">฿${fmt(e.buy_price, 0)}<span style="color:var(--muted);font-size:0.75rem">/บาท</span></td>
+      <td class="mono">${fmt(e.weight, 4)} บาท<br><span style="color:var(--muted);font-size:0.75rem">${fmt(e.weight * GOLD_GRAM_PER_BAHT, 3)} g</span></td>
+      <td class="mono">฿${fmt(GOLD_PRICE_THB, 0)}<span style="color:var(--muted);font-size:0.75rem">/บาท</span></td>
+      <td class="mono ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}฿${fmt(pl, 0)}</td>
+      <td class="mono ${plPct >= 0 ? 'green' : 'red'}">${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%</td>
+      <td style="color:var(--muted);font-size:0.8rem">${e.note || ''}</td>
+      <td><button class="btn-icon del" onclick="deleteGoldEntry('${e.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}

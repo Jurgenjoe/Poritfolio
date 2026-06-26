@@ -794,3 +794,40 @@
   border-color:var(--accent);
   color:var(--text);
 }
+
+/* === Gold price banner (รับซื้อ/ขายออก ทองคำแท่ง 96.5%) === */
+.gold-price-banner {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.gold-price-banner-label {
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--gold);
+  background: rgba(245,200,66,0.12);
+  border-radius: 8px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+.gold-price-row { display: flex; gap: 10px; }
+.gold-price-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 18px;
+  border-radius: 8px;
+  background: var(--surface2);
+  min-width: 100px;
+}
+.gold-price-box-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: var(--font-mono); }
+.gold-price-box-val { font-family: var(--font-mono); font-weight: 700; font-size: 1rem; color: var(--green); }
+.gold-price-meta { font-size: 0.72rem; color: var(--muted); display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
