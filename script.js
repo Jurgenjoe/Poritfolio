@@ -3169,9 +3169,12 @@ async function fetchGoldPrice() {
   }
 
   const CHNWT_URL = 'https://api.chnwt.dev/thai-gold-api/latest';
+  // ลองตรงๆ ก่อน แล้วถ้าติด CORS ค่อยลองผ่าน public CORS proxy 2 เจ้า (สลับกันลองเพื่อกันเจ้าใดเจ้าหนึ่งล่ม)
+  // ไม่ต้องตั้งเซิร์ฟเวอร์ใดๆ เพิ่มเอง — ทุกอย่างรันจากเบราว์เซอร์ของผู้ใช้ตรงๆ
   const attempts = [
     { url: CHNWT_URL, label: 'สมาคมค้าทองคำ (goldtraders.or.th)' },
-    { url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(CHNWT_URL), label: 'สมาคมค้าทองคำ (ผ่าน CORS proxy)' },
+    { url: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(CHNWT_URL), label: 'สมาคมค้าทองคำ (ผ่าน CORS proxy)' },
+    { url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(CHNWT_URL), label: 'สมาคมค้าทองคำ (ผ่าน CORS proxy สำรอง)' },
   ];
   for (const src of attempts) {
     try {
@@ -3185,6 +3188,7 @@ async function fetchGoldPrice() {
         GOLD_PRICE_THB = parsed.buy; // มูลค่าพอร์ต = ราคารับซื้อ (สิ่งที่จะได้จริงถ้าขายวันนี้)
         GOLD_PRICE_SOURCE = src.label;
         GOLD_PRICE_UPDATED = parsed.updated;
+        try { localStorage.setItem('gold_price_cache', JSON.stringify({ buy: parsed.buy, sell: parsed.sell, updated: parsed.updated })); } catch (e) {}
         console.log(`[Gold] ✅ ${src.label}: buy=${parsed.buy} sell=${parsed.sell}`);
         return GOLD_PRICE_THB;
       }
@@ -3220,7 +3224,19 @@ async function fetchGoldPrice() {
     } catch (e) { continue; }
   }
 
-  // ---- 3) ทุกแหล่งล่มหมด: ใช้ค่าล่าสุดที่เคยดึงได้ในเซสชันนี้ หรือค่า default ----
+  // ---- 3) ทุกแหล่งล่มหมด: ใช้ราคาล่าสุดที่เคยดึงได้สำเร็จ (เก็บไว้ใน localStorage) ก่อนจะใช้ค่า default ----
+  try {
+    const cached = JSON.parse(localStorage.getItem('gold_price_cache') || 'null');
+    if (cached?.buy > 0) {
+      GOLD_PRICE_BUY_THB = cached.buy;
+      GOLD_PRICE_SELL_THB = cached.sell || cached.buy;
+      GOLD_PRICE_THB = cached.buy;
+      GOLD_PRICE_SOURCE = '📦 ราคาล่าสุดที่เคยดึงได้ (ดึงสดไม่สำเร็จตอนนี้)';
+      GOLD_PRICE_UPDATED = cached.updated || '—';
+      return GOLD_PRICE_THB;
+    }
+  } catch (e) {}
+
   GOLD_PRICE_BUY_THB = GOLD_PRICE_BUY_THB || 61000;
   GOLD_PRICE_SELL_THB = GOLD_PRICE_SELL_THB || GOLD_PRICE_BUY_THB;
   GOLD_PRICE_THB = GOLD_PRICE_THB || GOLD_PRICE_BUY_THB;
