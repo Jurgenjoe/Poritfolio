@@ -3578,6 +3578,37 @@ function newsTimeAgo(unixSeconds) {
   return `${days} วันที่แล้ว`;
 }
 
+// ---- ดึงข้อมูลแบบมี timeout กันหน้าจอค้างถ้าแหล่งข้อมูลตอบช้า/ไม่ตอบเลย ----
+async function fetchWithTimeout(url, ms = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---- แปลข่าวเป็นภาษาไทยแบบง่ายๆ ด้วย Google Translate (ฟรี ไม่ต้องใช้ API key) ----
+// ใช้ endpoint สาธารณะของ Google ที่เปิด CORS ให้เรียกตรงจากเบราว์เซอร์ได้ ถ้าแปลพลาดจะคืนข้อความเดิม (อังกฤษ) แทน
+const _translateCache = new Map();
+async function translateToThai(text) {
+  if (!text) return text;
+  if (_translateCache.has(text)) return _translateCache.get(text);
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=th&dt=t&q=${encodeURIComponent(text)}`;
+    const r = await fetchWithTimeout(url, 6000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const translated = (d?.[0] || []).map(seg => seg[0]).join('') || text;
+    _translateCache.set(text, translated);
+    return translated;
+  } catch (e) {
+    _translateCache.set(text, text); // แปลไม่สำเร็จ ใช้ข้อความเดิมแทน ไม่ทำให้ทั้งหน้าพัง
+    return text;
+  }
+}
+
 function renderNewsItems(containerEl, items, emptyMsg) {
   if (!items || items.length === 0) {
     containerEl.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">${emptyMsg}</div>`;
@@ -3588,8 +3619,8 @@ function renderNewsItems(containerEl, items, emptyMsg) {
       ${n.image ? `<img src="${n.image}" onerror="this.style.display='none'" style="width:84px;height:60px;object-fit:cover;border-radius:6px;flex-shrink:0">` : ''}
       <div style="min-width:0">
         ${n.ticker ? `<span class="mono" style="font-size:0.7rem;color:var(--accent);background:rgba(127,127,127,0.12);padding:1px 6px;border-radius:4px">${n.ticker}</span>` : ''}
-        <div style="font-weight:600;margin-top:4px;line-height:1.35">${n.headline}</div>
-        <div style="color:var(--muted);font-size:0.78rem;margin-top:4px">${n.source || ''} · ${newsTimeAgo(n.datetime)}</div>
+        <div style="font-weight:600;margin-top:4px;line-height:1.35">${n.headline_th || n.headline}</div>
+        <div style="color:var(--muted);font-size:0.78rem;margin-top:4px">${n.source || ''} · ${newsTimeAgo(n.datetime)} · 🌐 แปลอัตโนมัติ</div>
       </div>
     </a>
   `).join('');
@@ -3602,6 +3633,7 @@ async function fetchHoldingsNews() {
     el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">ยังไม่มีหุ้นในพอร์ต</div>`;
     return;
   }
+  el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">⏳ กำลังโหลดและแปลข่าว...</div>`;
 
   const to = new Date();
   const from = new Date(Date.now() - 7 * 24 * 3600 * 1000); // ย้อนหลัง 7 วัน
@@ -3610,13 +3642,19 @@ async function fetchHoldingsNews() {
   try {
     const results = await Promise.all(tickers.map(async (ticker) => {
       try {
-        const r = await fetch(`${FINNHUB_BASE}/company-news?symbol=${encodeURIComponent(ticker)}&from=${fromStr}&to=${toStr}&token=${FINNHUB_API_KEY}`);
+        const r = await fetchWithTimeout(`${FINNHUB_BASE}/company-news?symbol=${encodeURIComponent(ticker)}&from=${fromStr}&to=${toStr}&token=${FINNHUB_API_KEY}`);
         if (!r.ok) return [];
         const d = await r.json();
-        return (Array.isArray(d) ? d : []).slice(0, 5).map(n => ({ ...n, ticker }));
+        // เอาแค่ 2 ข่าวล่าสุดต่อหุ้น พอเห็นภาพรวม ไม่ดึงเยอะเกินไป
+        return (Array.isArray(d) ? d : []).slice(0, 2).map(n => ({ ...n, ticker }));
       } catch (e) { return []; }
     }));
-    const merged = results.flat().sort((a, b) => (b.datetime || 0) - (a.datetime || 0)).slice(0, 40);
+    // เรียงข่าวล่าสุดก่อน เอาแค่ 15 ข่าวรวม (สำคัญๆ พอ ไม่ดึงมาทั้งหมด)
+    const merged = results.flat().sort((a, b) => (b.datetime || 0) - (a.datetime || 0)).slice(0, 15);
+
+    // แปลหัวข้อข่าวเป็นไทยทีละข่าว (จำกัดจำนวนแล้วเลยไม่หนักเกินไป)
+    await Promise.all(merged.map(async n => { n.headline_th = await translateToThai(n.headline); }));
+
     renderNewsItems(el, merged, 'ไม่พบข่าวล่าสุดของหุ้นที่ถือใน 7 วันที่ผ่านมา');
   } catch (e) {
     console.error('[News] holdings news failed:', e);
@@ -3626,11 +3664,14 @@ async function fetchHoldingsNews() {
 
 async function fetchMarketNews() {
   const el = document.getElementById('newsMarketList');
+  el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">⏳ กำลังโหลดและแปลข่าว...</div>`;
   try {
-    const r = await fetch(`${FINNHUB_BASE}/news?category=general&token=${FINNHUB_API_KEY}`);
+    const r = await fetchWithTimeout(`${FINNHUB_BASE}/news?category=general&token=${FINNHUB_API_KEY}`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
-    const items = (Array.isArray(d) ? d : []).slice(0, 40);
+    // เอาแค่ 8 ข่าวสำคัญล่าสุด ไม่ดึงข่าวทั่วไปทั้งหมด
+    const items = (Array.isArray(d) ? d : []).slice(0, 8);
+    await Promise.all(items.map(async n => { n.headline_th = await translateToThai(n.headline); }));
     renderNewsItems(el, items, 'ไม่พบข่าวภาพรวมตลาดในขณะนี้');
   } catch (e) {
     console.error('[News] market news failed:', e);
@@ -3640,25 +3681,43 @@ async function fetchMarketNews() {
 
 async function fetchEarningsCalendar() {
   const el = document.getElementById('earningsCalendarList');
-  const tickers = new Set(getStocks().map(s => s.ticker));
-  if (tickers.size === 0) {
+  const tickers = [...new Set(getStocks().map(s => s.ticker))];
+  if (tickers.length === 0) {
     el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">ยังไม่มีหุ้นในพอร์ต</div>`;
     return;
   }
+  el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">⏳ กำลังโหลดปฏิทิน...</div>`;
 
-  const from = new Date();
-  const to = new Date(Date.now() + 90 * 24 * 3600 * 1000); // มองล่วงหน้า 90 วัน
+  // หมายเหตุ: เรียก endpoint นี้แบบระบุ symbol ทีละตัว (ไม่ใช่ดึงปฏิทินรวมทั้งตลาดมา filter)
+  // เพราะ Finnhub free tier เวลาดึงปฏิทินรวมทั้งตลาดจะไม่ค่อยครอบคลุมหุ้นเล็ก/หุ้นที่ยังไม่มี estimate
+  // แต่ถ้าระบุ &symbol=TICKER ตรงๆ จะได้ข้อมูลของหุ้นตัวนั้นครบกว่ามาก (ยืนยันจาก doc/ตัวอย่างการใช้งานจริงของ Finnhub)
+  const from = new Date(Date.now() - 14 * 24 * 3600 * 1000);   // ย้อนหลัง 14 วัน เผื่อเพิ่งประกาศไปไม่นาน
+  const to = new Date(Date.now() + 200 * 24 * 3600 * 1000);    // มองล่วงหน้า 200 วัน (ครอบคลุมเกินกว่า 1 ไตรมาส)
   const fromStr = newsDateStr(from), toStr = newsDateStr(to);
 
   try {
-    const r = await fetch(`${FINNHUB_BASE}/calendar/earnings?from=${fromStr}&to=${toStr}&token=${FINNHUB_API_KEY}`);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    const all = (d.earningsCalendar || []).filter(e => tickers.has(e.symbol));
-    all.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const results = await Promise.all(tickers.map(async (ticker) => {
+      try {
+        const r = await fetchWithTimeout(`${FINNHUB_BASE}/calendar/earnings?from=${fromStr}&to=${toStr}&symbol=${encodeURIComponent(ticker)}&token=${FINNHUB_API_KEY}`);
+        if (!r.ok) return [];
+        const d = await r.json();
+        return (d.earningsCalendar || []);
+      } catch (e) { return []; }
+    }));
+
+    let all = results.flat();
+    // ต่อตัวอาจมีหลายแถว (ทั้งที่ประกาศไปแล้วและที่ยังไม่ประกาศ) — เอาเฉพาะแถวที่ใกล้วันนี้ที่สุดต่อ 1 ticker
+    const today = newsDateStr(new Date());
+    const byTicker = {};
+    all.forEach(e => {
+      if (!byTicker[e.symbol] || Math.abs(new Date(e.date) - new Date(today)) < Math.abs(new Date(byTicker[e.symbol].date) - new Date(today))) {
+        byTicker[e.symbol] = e;
+      }
+    });
+    all = Object.values(byTicker).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
     if (all.length === 0) {
-      el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">ไม่พบกำหนดการประกาศผลประกอบการของหุ้นที่ถือใน 90 วันข้างหน้า</div>`;
+      el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">ไม่พบกำหนดการประกาศผลประกอบการของหุ้นที่ถือในช่วงนี้ (Finnhub free tier อาจยังไม่มี estimate ของบางตัว)</div>`;
       return;
     }
 
@@ -3667,14 +3726,16 @@ async function fetchEarningsCalendar() {
       </tr></thead><tbody>` +
       all.map(e => {
         const hourLabel = { bmo: '🌅 ก่อนตลาดเปิด', amc: '🌙 หลังตลาดปิด', dmh: '🕐 ระหว่างวัน' }[e.hour] || (e.hour || '—');
-        return `<tr>
-          <td class="mono">${e.date || '—'}</td>
+        const isPast = e.date && e.date < today;
+        return `<tr style="${isPast ? 'opacity:0.5' : ''}">
+          <td class="mono">${e.date || '—'}${isPast ? ' (ประกาศแล้ว)' : ''}</td>
           <td class="mono" style="font-weight:700">${e.symbol}</td>
           <td>${hourLabel}</td>
           <td class="mono">${e.epsEstimate != null ? e.epsEstimate : '—'}</td>
           <td class="mono">${e.revenueEstimate != null ? fmt(e.revenueEstimate, 0) : '—'}</td>
         </tr>`;
-      }).join('') + `</tbody></table>`;
+      }).join('') + `</tbody></table>` +
+      (tickers.length > all.length ? `<div style="color:var(--muted);font-size:0.78rem;padding:12px 4px 0">⚠️ พบข้อมูลของ ${all.length}/${tickers.length} ตัว ตัวที่เหลือ Finnhub ยังไม่มี estimate วันประกาศให้ในช่วงนี้</div>` : '');
   } catch (e) {
     console.error('[News] earnings calendar failed:', e);
     el.innerHTML = `<div style="color:var(--red);text-align:center;padding:24px">❌ ดึงปฏิทินไม่สำเร็จ: ${e.message}</div>`;
@@ -3740,7 +3801,7 @@ async function fetchVixFearGreed() {
   ];
   for (const src of attempts) {
     try {
-      const r = await fetch(src.url);
+      const r = await fetchWithTimeout(src.url, 7000);
       if (!r.ok) continue;
       const d = await r.json();
       const meta = d?.chart?.result?.[0]?.meta;
