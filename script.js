@@ -2053,6 +2053,8 @@ function switchTab(name) {
   if (name === 'assets') renderAssetsTab();
   if (name === 'import') renderImportHistory();
   if (name === 'gold') initGoldTab();
+  if (name === 'news') initNewsTab();
+  if (name === 'feargreed') fetchVixFearGreed();
 }
 
 // ================================================================
@@ -3270,6 +3272,8 @@ async function initGoldTab() {
   document.getElementById('goldSellVal').textContent = '฿' + fmt(GOLD_PRICE_SELL_THB, 0);
   document.getElementById('goldPriceMeta').innerHTML =
     `📡 ${GOLD_PRICE_SOURCE}${GOLD_PRICE_UPDATED && GOLD_PRICE_UPDATED !== '—' ? ' · อัปเดต ' + GOLD_PRICE_UPDATED : ''}`;
+  const gcPriceEl = document.getElementById('gc_price');
+  if (gcPriceEl && !gcPriceEl.value && GOLD_PRICE_BUY_THB > 0) gcPriceEl.value = GOLD_PRICE_BUY_THB;
   renderGoldTab();
 }
 
@@ -3377,4 +3381,406 @@ function renderGoldTab() {
       <td><button class="btn-icon del" onclick="deleteGoldEntry('${e.id}')">✕</button></td>
     </tr>`;
   }).join('');
+}
+
+
+// ================================================================
+// ==================== BACKUP / RESTORE ==========================
+// ================================================================
+const BACKUP_TABLES = [
+  'stocks', 'price_history', 'chart_drawings', 'price_alerts',
+  'wallet_transactions', 'other_assets', 'import_history', 'gold_entries'
+];
+
+async function backupAllData() {
+  showToast('💾 กำลังรวบรวมข้อมูลทั้งหมด...');
+  const backup = {
+    _meta: {
+      app: 'Portfolio Tracker',
+      created_at: new Date().toISOString(),
+      tables: BACKUP_TABLES
+    }
+  };
+
+  try {
+    for (const table of BACKUP_TABLES) {
+      const { data, error } = await sb.from(table).select('*');
+      if (error) {
+        console.warn(`[Backup] ตาราง ${table} ดึงไม่สำเร็จ:`, error.message);
+        backup[table] = { __error: error.message };
+        continue;
+      }
+      backup[table] = data || [];
+    }
+
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = `portfolio-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    showToast('✅ ดาวน์โหลดไฟล์สำรองแล้ว เก็บไว้ให้ดี');
+  } catch (e) {
+    console.error('[Backup] ล้มเหลว:', e);
+    showToast('❌ สำรองข้อมูลไม่สำเร็จ: ' + e.message, 'var(--red)');
+  }
+}
+
+async function restoreAllData(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // reset input ให้เลือกไฟล์เดิมซ้ำได้
+  if (!file) return;
+
+  let backup;
+  try {
+    const text = await file.text();
+    backup = JSON.parse(text);
+  } catch (e) {
+    showToast('❌ ไฟล์ไม่ใช่ JSON ที่ถูกต้อง', 'var(--red)');
+    return;
+  }
+
+  const tablesInFile = BACKUP_TABLES.filter(t => Array.isArray(backup[t]));
+  if (tablesInFile.length === 0) {
+    showToast('❌ ไม่พบข้อมูลที่กู้คืนได้ในไฟล์นี้', 'var(--red)');
+    return;
+  }
+
+  const totalRows = tablesInFile.reduce((sum, t) => sum + backup[t].length, 0);
+  const confirmed = confirm(
+    `กู้คืนข้อมูลจากไฟล์สำรอง?\n\n` +
+    `พบ ${tablesInFile.length} ตาราง รวม ${totalRows} แถว\n` +
+    (backup._meta?.created_at ? `สร้างไฟล์เมื่อ: ${new Date(backup._meta.created_at).toLocaleString('th-TH')}\n\n` : '\n') +
+    `⚠️ ข้อมูลปัจจุบันในตารางเหล่านี้จะถูกเขียนทับด้วยข้อมูลในไฟล์ (อัปเสิร์ตตาม id/ticker)\n` +
+    `กดตกลงเพื่อดำเนินการต่อ`
+  );
+  if (!confirmed) return;
+
+  showToast('📥 กำลังกู้คืนข้อมูล...');
+  const results = [];
+
+  // ลำดับสำคัญ: stocks ก่อน เพราะตารางอื่นอ้างอิง ticker จาก stocks
+  const order = ['stocks', 'price_history', 'chart_drawings', 'price_alerts',
+                 'wallet_transactions', 'other_assets', 'import_history', 'gold_entries'];
+
+  for (const table of order) {
+    if (!tablesInFile.includes(table)) continue;
+    const rows = backup[table];
+    if (!rows.length) continue;
+    try {
+      const conflictKey = table === 'stocks' ? 'ticker'
+        : table === 'price_history' ? 'ticker,date'
+        : 'id';
+      const { error } = await sb.from(table).upsert(rows, { onConflict: conflictKey });
+      if (error) throw error;
+      results.push(`✅ ${table}: ${rows.length} แถว`);
+    } catch (e) {
+      console.error(`[Restore] ตาราง ${table} ล้มเหลว:`, e);
+      results.push(`❌ ${table}: ${e.message}`);
+    }
+  }
+
+  console.log('[Restore] สรุปผล:\n' + results.join('\n'));
+  showToast('✅ กู้คืนข้อมูลเสร็จแล้ว กำลังโหลดหน้าใหม่...');
+  setTimeout(() => location.reload(), 1500);
+}
+
+
+// ================================================================
+// ==================== GOLD CALCULATOR ===========================
+// ================================================================
+function calcGoldRecalc() {
+  // ตอนแก้ "ราคาทอง" ให้คำนวณจากช่องที่ผู้ใช้กรอกไว้ล่าสุด (เช็คว่าช่องไหนมีค่าอยู่)
+  const amountVal = parseFloat(document.getElementById('gc_amount')?.value);
+  const weightVal = parseFloat(document.getElementById('gc_weight')?.value);
+  if (weightVal > 0 && !(amountVal > 0)) {
+    calcGoldFromWeight();
+  } else {
+    calcGoldFromAmount();
+  }
+}
+
+function calcGoldFromAmount() {
+  const amount = parseFloat(document.getElementById('gc_amount')?.value);
+  const priceInput = parseFloat(document.getElementById('gc_price')?.value);
+  const price = priceInput > 0 ? priceInput : GOLD_PRICE_BUY_THB;
+  const outEl = document.getElementById('gc_result');
+  if (!outEl) return;
+
+  if (!(amount > 0) || !(price > 0)) {
+    outEl.innerHTML = `<span style="color:var(--muted)">กรอกจำนวนเงินและราคาทอง (หรือกด "ใช้ราคาปัจจุบัน")</span>`;
+    return;
+  }
+
+  const baht = amount / price;
+  const gram = baht * GOLD_GRAM_PER_BAHT;
+  outEl.innerHTML =
+    `เงิน <b class="mono">฿${fmt(amount, 0)}</b> ที่ราคาทอง <b class="mono">฿${fmt(price, 0)}</b>/บาท ซื้อได้ ` +
+    `<b class="mono green">${fmt(baht, 4)} บาททอง</b> (≈ <b class="mono green">${fmt(gram, 3)} กรัม</b>)`;
+}
+
+function calcGoldFromWeight() {
+  const weight = parseFloat(document.getElementById('gc_weight')?.value);
+  const unit = document.getElementById('gc_weightUnit')?.value || 'baht';
+  const priceInput = parseFloat(document.getElementById('gc_price')?.value);
+  const price = priceInput > 0 ? priceInput : GOLD_PRICE_BUY_THB;
+  const outEl = document.getElementById('gc_result');
+  if (!outEl) return;
+
+  if (!(weight > 0) || !(price > 0)) {
+    outEl.innerHTML = `<span style="color:var(--muted)">กรอกน้ำหนักและราคาทอง (หรือกด "ใช้ราคาปัจจุบัน")</span>`;
+    return;
+  }
+
+  const baht = unit === 'gram' ? weight / GOLD_GRAM_PER_BAHT : weight;
+  const gram = unit === 'gram' ? weight : weight * GOLD_GRAM_PER_BAHT;
+  const totalCost = baht * price;
+  outEl.innerHTML =
+    `ทอง <b class="mono">${fmt(baht, 4)} บาท</b> (≈ <b class="mono">${fmt(gram, 3)} กรัม</b>) ที่ราคา <b class="mono">฿${fmt(price, 0)}</b>/บาท ใช้เงิน ` +
+    `<b class="mono green">฿${fmt(totalCost, 0)}</b>`;
+}
+
+function useCurrentGoldPriceInCalc() {
+  const el = document.getElementById('gc_price');
+  if (!el) return;
+  if (GOLD_PRICE_BUY_THB > 0) {
+    el.value = GOLD_PRICE_BUY_THB;
+    showToast('📡 ใช้ราคาทองปัจจุบัน (รับซื้อ) แล้ว');
+  } else {
+    showToast('⏳ ยังไม่มีราคาทอง ลองเปิดแท็บออมทองก่อน', 'var(--red)');
+  }
+  calcGoldRecalc();
+}
+
+
+// ================================================================
+// ==================== NEWS & EARNINGS (Finnhub) =================
+// ================================================================
+const FINNHUB_API_KEY = 'd91ogphr01qnefog34agd91ogphr01qnefog34b0';
+const FINNHUB_BASE = 'https://finnhub.io/api/v1';
+
+function newsDateStr(d) { return d.toISOString().slice(0, 10); }
+
+function newsTimeAgo(unixSeconds) {
+  if (!unixSeconds) return '';
+  const diffMs = Date.now() - unixSeconds * 1000;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins} นาทีที่แล้ว`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} ชม.ที่แล้ว`;
+  const days = Math.floor(hrs / 24);
+  return `${days} วันที่แล้ว`;
+}
+
+function renderNewsItems(containerEl, items, emptyMsg) {
+  if (!items || items.length === 0) {
+    containerEl.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">${emptyMsg}</div>`;
+    return;
+  }
+  containerEl.innerHTML = items.map(n => `
+    <a href="${n.url}" target="_blank" rel="noopener" style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);text-decoration:none;color:inherit">
+      ${n.image ? `<img src="${n.image}" onerror="this.style.display='none'" style="width:84px;height:60px;object-fit:cover;border-radius:6px;flex-shrink:0">` : ''}
+      <div style="min-width:0">
+        ${n.ticker ? `<span class="mono" style="font-size:0.7rem;color:var(--accent);background:rgba(127,127,127,0.12);padding:1px 6px;border-radius:4px">${n.ticker}</span>` : ''}
+        <div style="font-weight:600;margin-top:4px;line-height:1.35">${n.headline}</div>
+        <div style="color:var(--muted);font-size:0.78rem;margin-top:4px">${n.source || ''} · ${newsTimeAgo(n.datetime)}</div>
+      </div>
+    </a>
+  `).join('');
+}
+
+async function fetchHoldingsNews() {
+  const el = document.getElementById('newsHoldingsList');
+  const tickers = [...new Set(getStocks().map(s => s.ticker))];
+  if (tickers.length === 0) {
+    el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">ยังไม่มีหุ้นในพอร์ต</div>`;
+    return;
+  }
+
+  const to = new Date();
+  const from = new Date(Date.now() - 7 * 24 * 3600 * 1000); // ย้อนหลัง 7 วัน
+  const fromStr = newsDateStr(from), toStr = newsDateStr(to);
+
+  try {
+    const results = await Promise.all(tickers.map(async (ticker) => {
+      try {
+        const r = await fetch(`${FINNHUB_BASE}/company-news?symbol=${encodeURIComponent(ticker)}&from=${fromStr}&to=${toStr}&token=${FINNHUB_API_KEY}`);
+        if (!r.ok) return [];
+        const d = await r.json();
+        return (Array.isArray(d) ? d : []).slice(0, 5).map(n => ({ ...n, ticker }));
+      } catch (e) { return []; }
+    }));
+    const merged = results.flat().sort((a, b) => (b.datetime || 0) - (a.datetime || 0)).slice(0, 40);
+    renderNewsItems(el, merged, 'ไม่พบข่าวล่าสุดของหุ้นที่ถือใน 7 วันที่ผ่านมา');
+  } catch (e) {
+    console.error('[News] holdings news failed:', e);
+    el.innerHTML = `<div style="color:var(--red);text-align:center;padding:24px">❌ ดึงข่าวไม่สำเร็จ: ${e.message}</div>`;
+  }
+}
+
+async function fetchMarketNews() {
+  const el = document.getElementById('newsMarketList');
+  try {
+    const r = await fetch(`${FINNHUB_BASE}/news?category=general&token=${FINNHUB_API_KEY}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const items = (Array.isArray(d) ? d : []).slice(0, 40);
+    renderNewsItems(el, items, 'ไม่พบข่าวภาพรวมตลาดในขณะนี้');
+  } catch (e) {
+    console.error('[News] market news failed:', e);
+    el.innerHTML = `<div style="color:var(--red);text-align:center;padding:24px">❌ ดึงข่าวไม่สำเร็จ: ${e.message}</div>`;
+  }
+}
+
+async function fetchEarningsCalendar() {
+  const el = document.getElementById('earningsCalendarList');
+  const tickers = new Set(getStocks().map(s => s.ticker));
+  if (tickers.size === 0) {
+    el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">ยังไม่มีหุ้นในพอร์ต</div>`;
+    return;
+  }
+
+  const from = new Date();
+  const to = new Date(Date.now() + 90 * 24 * 3600 * 1000); // มองล่วงหน้า 90 วัน
+  const fromStr = newsDateStr(from), toStr = newsDateStr(to);
+
+  try {
+    const r = await fetch(`${FINNHUB_BASE}/calendar/earnings?from=${fromStr}&to=${toStr}&token=${FINNHUB_API_KEY}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const all = (d.earningsCalendar || []).filter(e => tickers.has(e.symbol));
+    all.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    if (all.length === 0) {
+      el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:24px">ไม่พบกำหนดการประกาศผลประกอบการของหุ้นที่ถือใน 90 วันข้างหน้า</div>`;
+      return;
+    }
+
+    el.innerHTML = `<table><thead><tr>
+        <th>วันที่ประกาศ</th><th>หุ้น</th><th>ช่วงเวลา</th><th>EPS คาดการณ์</th><th>รายได้คาดการณ์</th>
+      </tr></thead><tbody>` +
+      all.map(e => {
+        const hourLabel = { bmo: '🌅 ก่อนตลาดเปิด', amc: '🌙 หลังตลาดปิด', dmh: '🕐 ระหว่างวัน' }[e.hour] || (e.hour || '—');
+        return `<tr>
+          <td class="mono">${e.date || '—'}</td>
+          <td class="mono" style="font-weight:700">${e.symbol}</td>
+          <td>${hourLabel}</td>
+          <td class="mono">${e.epsEstimate != null ? e.epsEstimate : '—'}</td>
+          <td class="mono">${e.revenueEstimate != null ? fmt(e.revenueEstimate, 0) : '—'}</td>
+        </tr>`;
+      }).join('') + `</tbody></table>`;
+  } catch (e) {
+    console.error('[News] earnings calendar failed:', e);
+    el.innerHTML = `<div style="color:var(--red);text-align:center;padding:24px">❌ ดึงปฏิทินไม่สำเร็จ: ${e.message}</div>`;
+  }
+}
+
+function switchNewsSub(name) {
+  ['holdings', 'market', 'calendar'].forEach(n => {
+    document.getElementById('newsSub_' + n).style.display = (n === name) ? '' : 'none';
+    document.getElementById('newsSubBtn_' + n).classList.toggle('active', n === name);
+  });
+}
+
+let _newsTabLoaded = false;
+function initNewsTab() {
+  if (_newsTabLoaded) return; // โหลดครั้งแรกพอ ไม่ดึงซ้ำทุกครั้งที่สลับแท็บ (กด 🔄 เพื่อรีเฟรชเอง)
+  _newsTabLoaded = true;
+  fetchHoldingsNews();
+  fetchMarketNews();
+  fetchEarningsCalendar();
+}
+
+function refreshNewsTab() {
+  fetchHoldingsNews();
+  fetchMarketNews();
+  fetchEarningsCalendar();
+}
+
+
+// ================================================================
+// ==================== FEAR & GREED (VIX-based) ===================
+// ================================================================
+function fgScoreFromVix(vix) {
+  // VIX ~10 ถือว่าตลาดสงบมาก (โลภสุดขีด) ถึง ~40 ถือว่าตลาดตื่นตระหนก (กลัวสุดขีด)
+  // map กลับด้าน: VIX สูง -> score ต่ำ (กลัว), VIX ต่ำ -> score สูง (โลภ)
+  const lo = 10, hi = 40;
+  const clamped = Math.min(hi, Math.max(lo, vix));
+  const pct = (clamped - lo) / (hi - lo); // 0 (สงบ) .. 1 (ตื่นตระหนก)
+  return Math.round((1 - pct) * 100);
+}
+
+function fgLabel(score) {
+  if (score >= 75) return { text: 'โลภสุดขีด (Extreme Greed)', emoji: '🤑', color: '#16a085' };
+  if (score >= 55) return { text: 'โลภ (Greed)', emoji: '🙂', color: '#2ecc71' };
+  if (score >= 45) return { text: 'กลาง ๆ (Neutral)', emoji: '😐', color: '#f1c40f' };
+  if (score >= 25) return { text: 'กลัว (Fear)', emoji: '😟', color: '#e67e22' };
+  return { text: 'กลัวสุดขีด (Extreme Fear)', emoji: '😱', color: '#c0392b' };
+}
+
+async function fetchVixFearGreed() {
+  const metaEl = document.getElementById('fgMeta');
+  metaEl.textContent = '⏳ กำลังโหลดข้อมูล VIX...';
+
+  let vix = null, change = null, source = '';
+
+  // หมายเหตุ: Finnhub free tier ไม่รองรับ symbol ดัชนีอย่าง ^VIX (ทดสอบแล้วได้ "Symbol not supported")
+  // เลยใช้ Yahoo Finance เป็นแหล่งหลักโดยตรง ผ่าน CORS proxy เดียวกับที่ใช้ดึงราคาทอง/อัตราแลกเปลี่ยนอยู่แล้ว
+  const YAHOO_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX';
+  const attempts = [
+    { url: YAHOO_URL, label: 'Yahoo Finance' },
+    { url: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(YAHOO_URL), label: 'Yahoo Finance (ผ่าน CORS proxy)' },
+    { url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(YAHOO_URL), label: 'Yahoo Finance (ผ่าน CORS proxy สำรอง)' },
+  ];
+  for (const src of attempts) {
+    try {
+      const r = await fetch(src.url);
+      if (!r.ok) continue;
+      const d = await r.json();
+      const meta = d?.chart?.result?.[0]?.meta;
+      if (meta?.regularMarketPrice > 0) {
+        vix = meta.regularMarketPrice;
+        change = meta.regularMarketPrice - (meta.previousClose || meta.chartPreviousClose || meta.regularMarketPrice);
+        source = src.label;
+        break;
+      }
+    } catch (e) { console.warn(`[FearGreed] ${src.label} failed:`, e.message); }
+  }
+
+  if (vix === null) {
+    // ---- 3) ใช้ค่าที่เคยดึงได้ล่าสุดจาก localStorage ----
+    try {
+      const cached = JSON.parse(localStorage.getItem('vix_cache') || 'null');
+      if (cached?.vix > 0) {
+        vix = cached.vix; change = cached.change || 0;
+        source = '📦 ค่าล่าสุดที่เคยดึงได้ (ดึงสดไม่สำเร็จตอนนี้)';
+      }
+    } catch (e) {}
+  }
+
+  if (vix === null) {
+    metaEl.textContent = '❌ ดึงข้อมูล VIX ไม่สำเร็จ ลองกด 🔄 อีกครั้ง';
+    return;
+  }
+
+  try { localStorage.setItem('vix_cache', JSON.stringify({ vix, change })); } catch (e) {}
+
+  const score = fgScoreFromVix(vix);
+  const lbl = fgLabel(score);
+
+  metaEl.textContent = `📡 แหล่งข้อมูล: ${source} · อัปเดต ${new Date().toLocaleString('th-TH')}`;
+  document.getElementById('fgPointer').style.left = score + '%';
+  document.getElementById('fgScoreLabel').textContent = `${lbl.emoji} ${score}`;
+  document.getElementById('fgScoreLabel').style.color = lbl.color;
+  document.getElementById('fgScoreText').textContent = lbl.text;
+  document.getElementById('fgVixVal').textContent = vix.toFixed(2);
+  const changeEl = document.getElementById('fgVixChange');
+  changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2);
+  changeEl.style.color = change >= 0 ? 'var(--red)' : 'var(--green, #2ecc71)'; // VIX ขึ้น = ตลาดกลัวมากขึ้น เลยใช้สีแดง
 }
