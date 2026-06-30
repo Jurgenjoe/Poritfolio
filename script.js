@@ -1120,6 +1120,27 @@ function mulberry32(a) {
   }
 }
 
+function renderWatchlistSide() {
+  const el = document.getElementById('watchlistSide');
+  if (!el) return;
+  const stocks = getStocks();
+  el.innerHTML = stocks.map((s, i) => {
+    const lp = livePrices[s.ticker];
+    const price = lp ? lp.price : parseFloat(s.price);
+    const pct = lp ? lp.pct : 0;
+    const isActive = i === detailState.idx;
+    const chgColor = pct >= 0 ? 'var(--green, #2ecc71)' : 'var(--red)';
+    return `
+      <div onclick="openDetail(${i})" style="display:flex;justify-content:space-between;align-items:center;padding:8px 6px;cursor:pointer;border-radius:6px;${isActive ? 'background:rgba(127,127,127,0.18);' : ''}" onmouseover="this.style.background='rgba(127,127,127,0.12)'" onmouseout="this.style.background='${isActive ? 'rgba(127,127,127,0.18)' : 'transparent'}'">
+        <span class="mono" style="font-weight:700;font-size:0.82rem">${s.ticker}</span>
+        <span style="text-align:right">
+          <div class="mono" style="font-size:0.8rem">$${fmt(price)}</div>
+          <div class="mono" style="font-size:0.7rem;color:${chgColor}">${pct >= 0 ? '+' : ''}${fmt(pct,2)}%</div>
+        </span>
+      </div>`;
+  }).join('');
+}
+
 async function openDetail(idx) {
   const stocks = getStocks();
   const s = stocks[idx];
@@ -1140,6 +1161,7 @@ async function openDetail(idx) {
   renderPositionBlock(idx);
   renderAlertsUI();
   renderDrawnListUI();
+  renderWatchlistSide();
   updateDetailLivePrice();
 
   document.getElementById('detailOverlay').classList.add('open');
@@ -1862,6 +1884,7 @@ function updateDetailLivePrice() {
   chgEl.className = 'detail-chg ' + (chg>=0?'green':'red');
   renderKeyStats();
   if (detailState.idx >= 0) renderPositionBlock(detailState.idx);
+  renderWatchlistSide();
   if (dctx) {
     // update last candle close live for a "live tail"
     const c = detailState.candles;
