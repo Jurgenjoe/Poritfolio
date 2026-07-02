@@ -4,6 +4,17 @@ const SUPABASE_KEY = 'sb_publishable_wdGgFdHqIqH2E0tCkrzOUw_NtqRXbEu';
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ✦ FIX: supabase-js ไม่ throw exception เวลา insert/upsert ไม่สำเร็จ (เช่นโดน RLS policy
+// บล็อก หรือ column ไม่ตรง) — มัน resolve เป็น { data, error } เฉยๆ ทำให้โค้ดเดิมที่เขียน
+// `try { await sb.from(...).insert(...) } catch(e) { ...fallback... }` ทั่วทั้งไฟล์ catch()
+// ไม่เคยทำงานเลย ข้อมูลหายไปเงียบๆ ทั้งที่หน้าเว็บขึ้น toast ว่า "บันทึกแล้ว"
+// ฟังก์ชันนี้ห่อ query ของ supabase แล้ว throw error จริงๆ ถ้ามี error กลับมา เพื่อให้
+// catch(e) ด้านนอก (fallback ไป localStorage) ทำงานตามที่ตั้งใจไว้
+async function sbWrite(query) {
+  const { error } = await query;
+  if (error) throw error;
+}
+
 let THB_RATE = 32.48; // default fallback, will be updated from live API
 let currency = 'USD';
 let editIndex = -1;
@@ -2481,13 +2492,15 @@ async function addWalletTx() {
   _walletTxs.push(tx);
 
   try {
-    await sb.from('wallet_transactions').insert({ ...tx });
+    await sbWrite(sb.from('wallet_transactions').insert({ ...tx }));
+    showToast('💱 บันทึกการแลกเงินแล้ว');
   } catch (e) {
+    console.error('[Wallet] บันทึกขึ้น Server ไม่สำเร็จ:', e.message || e);
     localStorage.setItem('wallet_txs', JSON.stringify(_walletTxs));
+    showToast('⚠️ บันทึกขึ้น Server ไม่สำเร็จ (เก็บไว้ในเครื่องนี้ชั่วคราว)', 'var(--red)');
   }
 
   ['txAmount', 'txRate', 'txNote'].forEach(id => document.getElementById(id).value = '');
-  showToast('💱 บันทึกการแลกเงินแล้ว');
   renderWalletTab();
 }
 
@@ -2659,12 +2672,14 @@ async function addAsset() {
   const asset = { id: 'ast' + Date.now(), name, type, value, cost, note };
   _assets.push(asset);
   try {
-    await sb.from('other_assets').insert({ ...asset });
+    await sbWrite(sb.from('other_assets').insert({ ...asset }));
+    showToast('🏦 เพิ่มสินทรัพย์แล้ว');
   } catch (e) {
+    console.error('[Assets] บันทึกขึ้น Server ไม่สำเร็จ:', e.message || e);
     localStorage.setItem('other_assets', JSON.stringify(_assets));
+    showToast('⚠️ บันทึกขึ้น Server ไม่สำเร็จ (เก็บไว้ในเครื่องนี้ชั่วคราว)', 'var(--red)');
   }
   ['a_name', 'a_value', 'a_cost', 'a_note'].forEach(id => document.getElementById(id).value = '');
-  showToast('🏦 เพิ่มสินทรัพย์แล้ว');
   renderAssetsTab();
 }
 
@@ -3462,8 +3477,11 @@ async function fetchGoldPrice() {
   const CHNWT_URL = 'https://api.chnwt.dev/thai-gold-api/latest';
   // แหล่งแรก: gold-price.json ที่ GitHub Actions อัปเดตทุก 30 นาที (same-origin, ไม่มี CORS)
   // ถ้าไม่มีหรือข้อมูลเก่าเกิน 2 ชั่วโมง ค่อยลอง CHNWT และ CORS proxy ตามลำดับ
+  // ✦ FIX: เติม cache-busting query (?t=timestamp) กัน browser/CDN cache ไฟล์ gold-price.json
+  // ค้างไว้ (เจออาการ "กดรีเฟรชแล้วราคาทองไม่อัปเดต") — ของเดิมไม่มี query เลย ทำให้บาง
+  // เบราว์เซอร์/edge cache ของ GitHub Pages อาจส่งไฟล์เวอร์ชันเก่ากลับมาซ้ำๆ
   const attempts = [
-    { url: './gold-price.json', label: 'สมาคมค้าทองคำ (GitHub Actions cache)' },
+    { url: './gold-price.json?t=' + Date.now(), label: 'สมาคมค้าทองคำ (GitHub Actions cache)' },
     { url: CHNWT_URL, label: 'สมาคมค้าทองคำ (goldtraders.or.th)' },
     { url: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(CHNWT_URL), label: 'สมาคมค้าทองคำ (ผ่าน CORS proxy)' },
     { url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(CHNWT_URL), label: 'สมาคมค้าทองคำ (ผ่าน CORS proxy สำรอง)' },
@@ -3548,8 +3566,14 @@ async function loadGoldFromSB() {
 }
 
 async function saveGoldToSB(entry) {
-  try { await sb.from('gold_entries').upsert({ ...entry }); }
-  catch (e) { localStorage.setItem('gold_entries', JSON.stringify(_goldEntries)); }
+  try {
+    await sbWrite(sb.from('gold_entries').upsert({ ...entry }));
+    return true;
+  } catch (e) {
+    console.error('[Gold] บันทึกขึ้น Server ไม่สำเร็จ:', e.message || e);
+    localStorage.setItem('gold_entries', JSON.stringify(_goldEntries));
+    return false;
+  }
 }
 
 async function initGoldTab() {
@@ -3589,10 +3613,14 @@ async function addGoldEntry() {
     date, note
   };
   _goldEntries.push(entry);
-  await saveGoldToSB(entry);
+  const saved = await saveGoldToSB(entry);
 
   ['g_buyPrice', 'g_weight', 'g_note'].forEach(id => document.getElementById(id).value = '');
-  showToast('🥇 เพิ่มรายการทองแล้ว');
+  if (saved) {
+    showToast('🥇 เพิ่มรายการทองแล้ว');
+  } else {
+    showToast('⚠️ บันทึกขึ้น Server ไม่สำเร็จ (เก็บไว้ในเครื่องนี้ชั่วคราว)', 'var(--red)');
+  }
   renderGoldTab();
 }
 
